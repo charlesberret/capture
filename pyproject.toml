@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "capture-note"
+version = "1.0.0"
+description = "Quick multi-modal note capture with LLM-powered titles and tags"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    { name = "Charles Berret" },
+]
+dependencies = []
+
+[project.optional-dependencies]
+yaml = ["pyyaml"]
+ocr = [
+    "pyobjc-core",
+    "pyobjc-framework-Vision",
+    "pyobjc-framework-Quartz",
+]
+all = ["capture-note[yaml,ocr]"]
+
+[project.scripts]
+capture = "capture:main"
+
+[tool.setuptools]
+py-modules = ["capture"]

@@ -1,0 +1,40 @@
+# capture configuration
+# Place at ~/.config/capture/config.yaml or set CAPTURE_CONFIG env var
+
+# Where notes are saved (default: ~/Notes)
+# notes_dir: ~/Notes
+
+# Staging folder for iOS Shortcut captures (default: ~/Notes/_capture-staging)
+# capture_dir: ~/Notes/_capture-staging
+
+# Path to a whisper-dictionary.yaml for custom vocabulary / corrections
+# whisper_dictionary: null
+
+# Editor for text captures (default: nano)
+# editor: nano
+
+# LLM settings (Ollama)
+# llm:
+#   model: phi3:mini          # Ollama model for titles and tags
+#   enable_metis: true        # Enable smart tags, connections, serendipity
+#   title_timeout: 20         # Seconds to wait for title generation
+#   tag_timeout: 15           # Seconds to wait for tag suggestion
+#   content_threshold: 30     # Min chars before attempting LLM title
+#   whisper_model: base       # Whisper model size (tiny, base, small, medium, large)
+
+# Default note metadata
+# defaults:
+#   tags:                     # Base tags added to every capture
+#     - "[[kernel]]"
+#     - "[[captured]]"
+#   author: ""                # Omitted from frontmatter when empty
+
+# Metis cultivation settings
+# metis:
+#   serendipity_age_days: 30  # Notes older than this are candidates
+#   max_connections: 3        # Max related notes to show
+#   max_keywords: 10          # Keywords extracted for connection search
+
+# UI settings
+# ui:
+#   max_recent: 5             # Recent destinations to remember

@@ -1,0 +1,1290 @@
+#!/usr/bin/env python3
+"""
+capture - Quick idea capture tool
+
+Usage:
+    capture                    # Interactive menu
+    capture quick "idea"       # One-liner capture
+    capture text               # Open editor for longer text
+    capture photo [file]       # OCR from image file
+    capture voice              # Record voice and transcribe
+    capture process            # Process pending items from _capture-staging folder
+
+All captures create timestamped kernel notes in Notes/
+"""
+
+import sys
+import os
+import subprocess
+import tempfile
+import argparse
+import json
+import readline
+import threading
+from datetime import datetime
+from pathlib import Path
+
+# --- Configuration ---
+
+DEFAULTS = {
+    'notes_dir': '~/Notes',
+    'capture_dir': '~/Notes/_capture-staging',
+    'whisper_dictionary': None,
+    'editor': 'nano',
+    'llm': {
+        'model': 'phi3:mini',
+        'enable_metis': True,
+        'title_timeout': 20,
+        'tag_timeout': 15,
+        'content_threshold': 30,
+        'whisper_model': 'base',
+    },
+    'defaults': {
+        'tags': ['[[kernel]]', '[[captured]]'],
+        'author': '',
+    },
+    'metis': {
+        'serendipity_age_days': 30,
+        'max_connections': 3,
+        'max_keywords': 10,
+    },
+    'ui': {
+        'max_recent': 5,
+    },
+}
+
+DEFAULT_CONFIG_TEMPLATE = """\
+# capture configuration
+# Place at ~/.config/capture/config.yaml or set CAPTURE_CONFIG env var
+
+# Where notes are saved (default: ~/Notes)
+# notes_dir: ~/Notes
+
+# Staging folder for iOS Shortcut captures (default: ~/Notes/_capture-staging)
+# capture_dir: ~/Notes/_capture-staging
+
+# Path to a whisper-dictionary.yaml for custom vocabulary / corrections
+# whisper_dictionary: null
+
+# Editor for text captures (default: nano)
+# editor: nano
+
+# LLM settings (Ollama)
+# llm:
+#   model: phi3:mini          # Ollama model for titles and tags
+#   enable_metis: true        # Enable smart tags, connections, serendipity
+#   title_timeout: 20         # Seconds to wait for title generation
+#   tag_timeout: 15           # Seconds to wait for tag suggestion
+#   content_threshold: 30     # Min chars before attempting LLM title
+#   whisper_model: base       # Whisper model size (tiny, base, small, medium, large)
+
+# Default note metadata
+# defaults:
+#   tags:                     # Base tags added to every capture
+#     - "[[kernel]]"
+#     - "[[captured]]"
+#   author: ""                # Omitted from frontmatter when empty
+
+# Metis cultivation settings
+# metis:
+#   serendipity_age_days: 30  # Notes older than this are candidates
+#   max_connections: 3        # Max related notes to show
+#   max_keywords: 10          # Keywords extracted for connection search
+
+# UI settings
+# ui:
+#   max_recent: 5             # Recent destinations to remember
+"""
+
+
+def _deep_merge(base, override):
+    """Recursively merge override dict into base dict."""
+    merged = base.copy()
+    for key, val in override.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(val, dict):
+            merged[key] = _deep_merge(merged[key], val)
+        else:
+            merged[key] = val
+    return merged
+
+
+def _find_config_file():
+    """Locate config file: $CAPTURE_CONFIG env var, then ~/.config/capture/config.yaml."""
+    env_path = os.environ.get('CAPTURE_CONFIG')
+    if env_path:
+        p = Path(env_path).expanduser()
+        if p.exists():
+            return p
+    default = Path.home() / '.config' / 'capture' / 'config.yaml'
+    if default.exists():
+        return default
+    return None
+
+
+def load_config(config_path=None):
+    """Load configuration with precedence: env vars > config file > defaults."""
+    config = DEFAULTS.copy()
+    # Deep-copy nested dicts
+    for k, v in config.items():
+        if isinstance(v, dict):
+            config[k] = v.copy()
+
+    # Load config file
+    file_path = Path(config_path).expanduser() if config_path else _find_config_file()
+    if file_path and file_path.exists():
+        try:
+            import yaml
+            file_config = yaml.safe_load(file_path.read_text()) or {}
+            config = _deep_merge(config, file_config)
+        except ImportError:
+            print(f"Warning: PyYAML not installed, cannot read {file_path}")
+        except Exception as e:
+            print(f"Warning: Could not parse {file_path}: {e}")
+
+    # Env var overrides (highest precedence)
+    if os.environ.get('OLLAMA_MODEL'):
+        config['llm']['model'] = os.environ['OLLAMA_MODEL']
+    if os.environ.get('EDITOR'):
+        config['editor'] = os.environ['EDITOR']
+    if os.environ.get('CAPTURE_METIS'):
+        config['llm']['enable_metis'] = os.environ['CAPTURE_METIS'].lower() in ['true', '1', 'yes']
+
+    return config
+
+
+_config = None
+
+
+def cfg():
+    """Access the loaded configuration. Initializes on first call."""
+    global _config
+    if _config is None:
+        _config = load_config()
+    return _config
+
+
+# Mutable runtime state (set by dest picker / --dest flag)
+NOTES_DIR = None  # resolved in main()
+RECENT_DEST_FILE = Path.home() / ".cache/capture/recent-destinations.json"
+
+
+def load_recent_destinations():
+    """Load recent destination directories from cache."""
+    if RECENT_DEST_FILE.exists():
+        try:
+            return json.loads(RECENT_DEST_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    return []
+
+
+def save_recent_destination(dest_path):
+    """Save a destination to the recent list (most recent first, no duplicates)."""
+    dest_str = str(dest_path)
+    # Don't save the default
+    default_dir = Path(cfg()['notes_dir']).expanduser()
+    if dest_path == default_dir:
+        return
+    recents = load_recent_destinations()
+    # Remove if already present, then prepend
+    recents = [r for r in recents if r != dest_str]
+    recents.insert(0, dest_str)
+    recents = recents[:cfg()['ui']['max_recent']]
+    RECENT_DEST_FILE.parent.mkdir(parents=True, exist_ok=True)
+    RECENT_DEST_FILE.write_text(json.dumps(recents, indent=2))
+
+
+def shorten_path(p):
+    """Shorten a path for display, collapsing home and iCloud prefixes."""
+    s = str(p)
+    icloud = str(Path.home() / "Library/Mobile Documents/com~apple~CloudDocs")
+    if s.startswith(icloud):
+        return "iCloud" + s[len(icloud):]
+    home = str(Path.home())
+    if s.startswith(home):
+        return "~" + s[len(home):]
+    return s
+
+
+_ICLOUD = str(Path.home() / "Library/Mobile Documents/com~apple~CloudDocs")
+_HOME = str(Path.home())
+
+
+def _expand_capture_path(text):
+    """Expand iCloud/ and ~/ shorthands to absolute paths."""
+    if text.startswith("iCloud/"):
+        return _ICLOUD + text[len("iCloud"):]  # keeps the /
+    if text == "iCloud":
+        return _ICLOUD + "/"
+    return os.path.expanduser(text)
+
+
+def _shorten_capture_path(abspath):
+    """Convert absolute path back to shorthand for display."""
+    if abspath.startswith(_ICLOUD + "/"):
+        return "iCloud" + abspath[len(_ICLOUD):]
+    if abspath.startswith(_ICLOUD):
+        return "iCloud" + abspath[len(_ICLOUD):]
+    if abspath.startswith(_HOME):
+        return "~" + abspath[len(_HOME):]
+    return abspath
+
+
+def _path_completer(text, state):
+    """Readline completer for directory paths with iCloud/ shorthand."""
+    if state == 0:
+        import glob
+        _path_completer._matches = []
+
+        # If text is a prefix of "iCloud/" itself, offer it as a completion
+        if not text.startswith("iCloud/") and "iCloud/".startswith(text):
+            _path_completer._matches.append("iCloud/")
+        # Also offer ~/ if text is a prefix of it
+        if not text.startswith("~/") and "~/".startswith(text) and text != "~":
+            _path_completer._matches.append("~/")
+
+        # Expand and glob for actual directory matches
+        expanded = _expand_capture_path(text)
+        for p in sorted(glob.glob(expanded + "*")):
+            if os.path.isdir(p):
+                short = _shorten_capture_path(p) + "/"
+                if short not in _path_completer._matches:
+                    _path_completer._matches.append(short)
+    if state < len(_path_completer._matches):
+        return _path_completer._matches[state]
+    return None
+
+_path_completer._matches = []
+
+
+def input_path(prompt="Path: "):
+    """Prompt for a path with tab-completion and arrow keys."""
+    old_completer = readline.get_completer()
+    old_delims = readline.get_completer_delims()
+    readline.set_completer(_path_completer)
+    readline.set_completer_delims(' \t\n')
+    if 'libedit' in (readline.__doc__ or ''):
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+    try:
+        return input(prompt).strip().strip("'\"")
+    finally:
+        readline.set_completer(old_completer)
+        readline.set_completer_delims(old_delims)
+
+
+def resolve_dest_input(raw):
+    """Resolve a user-typed path, expanding iCloud/ and ~/ prefixes."""
+    if not raw:
+        return None
+    raw = raw.rstrip("/")
+    # Expand "iCloud/..." shorthand
+    if raw.startswith("iCloud/") or raw == "iCloud":
+        raw = str(Path.home() / "Library/Mobile Documents/com~apple~CloudDocs" / raw[len("iCloud/"):])
+    dest = Path(raw).expanduser().resolve()
+    dest.mkdir(parents=True, exist_ok=True)
+    save_recent_destination(dest)
+    return dest
+
+
+def choose_destination():
+    """Interactive destination picker using fzf. Falls back to simple input."""
+    default_notes_dir = Path(cfg()['notes_dir']).expanduser()
+    recents = load_recent_destinations()
+    default_display = shorten_path(default_notes_dir)
+
+    # Build options list: default first, then recents
+    options = [default_display]
+    option_paths = [default_notes_dir]
+    for r in recents:
+        options.append(shorten_path(Path(r)))
+        option_paths.append(Path(r))
+    options.append("[new path]")
+
+    # Try fzf
+    try:
+        fzf_input = "\n".join(options)
+        result = subprocess.run(
+            ['fzf', '--height=~10', '--layout=reverse', '--no-info',
+             '--header=Save to:', '--pointer=▸'],
+            input=fzf_input, capture_output=True, text=True
+        )
+
+        # User hit Escape
+        if result.returncode != 0:
+            return default_notes_dir
+
+        selection = result.stdout.strip()
+
+        if selection == "[new path]":
+            raw = input_path()
+            dest = resolve_dest_input(raw)
+            return dest if dest else default_notes_dir
+
+        if selection in options:
+            idx = options.index(selection)
+            dest = option_paths[idx]
+            if dest != default_notes_dir:
+                save_recent_destination(dest)
+            return dest
+
+        return default_notes_dir
+
+    except FileNotFoundError:
+        # No fzf — plain fallback
+        print(f"\nSave to [{default_display}]:")
+        for i, opt in enumerate(options[1:], 1):
+            print(f"  {i}) {opt}")
+        choice = input("\nEnter to accept, # to pick, or type a path: ").strip()
+        if not choice:
+            return default_notes_dir
+        if choice.isdigit():
+            idx = int(choice)
+            if 1 <= idx < len(options):
+                if options[idx] == "[new path]":
+                    raw = input_path()
+                    dest = resolve_dest_input(raw)
+                    return dest if dest else default_notes_dir
+                dest = option_paths[idx]
+                save_recent_destination(dest)
+                return dest
+        dest = resolve_dest_input(choice)
+        return dest if dest else default_notes_dir
+
+
+def load_whisper_dictionary():
+    """Load and merge system + project-level whisper dictionaries.
+
+    Returns (prompt_vocab: list[str], corrections: dict[str, str]).
+    Project dictionary is looked up relative to NOTES_DIR.
+    """
+    try:
+        import yaml
+    except ImportError:
+        return [], {}
+
+    prompt_vocab = []
+    corrections = {}
+
+    dict_paths = [NOTES_DIR / 'whisper-dictionary.yaml',
+                  NOTES_DIR.parent / 'whisper-dictionary.yaml']
+    sys_dict = cfg()['whisper_dictionary']
+    if sys_dict:
+        dict_paths.insert(0, Path(sys_dict).expanduser())
+
+    for dict_path in dict_paths:
+        if dict_path.exists():
+            try:
+                data = yaml.safe_load(dict_path.read_text())
+                if data.get('prompt_vocab'):
+                    prompt_vocab.extend(data['prompt_vocab'])
+                if data.get('corrections'):
+                    corrections.update(data['corrections'])
+            except Exception:
+                pass
+
+    return prompt_vocab, corrections
+
+
+def build_whisper_prompt(vocab):
+    """Build an initial prompt string from vocabulary list."""
+    if not vocab:
+        return None
+    # Whisper uses the initial prompt to bias toward these spellings
+    return ". ".join(dict.fromkeys(vocab)) + "."
+
+
+def apply_corrections(text, corrections):
+    """Apply post-processing corrections to transcribed text."""
+    if not corrections:
+        return text
+    import re
+    for wrong, right in corrections.items():
+        text = re.sub(re.escape(wrong), right, text, flags=re.IGNORECASE)
+    return text
+
+def timestamp():
+    """Generate timestamp for note filename."""
+    return datetime.now().strftime("%Y%m%d%H%M")
+
+def slugify(text, max_len=50):
+    """Convert text to filename-safe slug."""
+    # Take first line, truncate, clean up
+    first_line = text.split('\n')[0].strip()
+    slug = first_line[:max_len].strip()
+    # Remove/replace problematic characters
+    for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']:
+        slug = slug.replace(char, '')
+    return slug.strip(' .')
+
+def warmup_ollama():
+    """Warm up Ollama in background (non-blocking)."""
+    if not cfg()['llm']['enable_metis']:
+        return None
+    try:
+        proc = subprocess.Popen(
+            ['ollama', 'run', cfg()['llm']['model'], 'hi'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        return proc
+    except FileNotFoundError:
+        return None
+
+def generate_title_ollama(content, warmup_proc=None):
+    """Generate a concise title using Ollama."""
+    # Wait for warmup to finish if it was started
+    if warmup_proc:
+        try:
+            warmup_proc.wait(timeout=5)
+        except:
+            warmup_proc.kill()
+
+    prompt = f"""Generate a concise 3-8 word title for this note. Return ONLY the title, no quotes or explanation.
+
+Note content:
+{content[:1000]}
+
+Title:"""
+
+    try:
+        result = subprocess.run(
+            ['ollama', 'run', cfg()['llm']['model'], prompt],
+            capture_output=True,
+            text=True,
+            timeout=cfg()['llm']['title_timeout']
+        )
+        if result.returncode == 0:
+            title = result.stdout.strip()
+            # Clean up common LLM artifacts
+            title = title.strip('"\'')
+            # Remove "Title:" prefix if model included it
+            if title.lower().startswith('title:'):
+                title = title[6:].strip()
+            # Sanity check: should be short
+            if title and len(title) < 80:
+                return title
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return None
+
+def smart_title(content, warmup_proc=None):
+    """Generate a good title: use LLM for meaningful content, truncate for short snippets."""
+    # Try LLM for any substantial content (not just one-liners)
+    if len(content.strip()) > cfg()['llm']['content_threshold']:
+        llm_title = generate_title_ollama(content, warmup_proc)
+        if llm_title:
+            return slugify(llm_title, max_len=80)
+
+    # Fall back to simple truncation
+    return slugify(content)
+
+def suggest_tags(content, warmup_proc=None):
+    """Suggest relevant tags using Ollama."""
+    if not cfg()['llm']['enable_metis']:
+        return []
+
+    # Wait for warmup if provided
+    if warmup_proc:
+        try:
+            warmup_proc.wait(timeout=5)
+        except:
+            warmup_proc.kill()
+
+    prompt = f"""Suggest 2-4 relevant tags for this note. Tags should be single words or short phrases (2-3 words max). Return ONLY the tags as a comma-separated list, no explanation.
+
+Note content:
+{content[:500]}
+
+Tags:"""
+
+    try:
+        result = subprocess.run(
+            ['ollama', 'run', cfg()['llm']['model'], prompt],
+            capture_output=True,
+            text=True,
+            timeout=cfg()['llm']['tag_timeout']
+        )
+        if result.returncode == 0:
+            tags_text = result.stdout.strip()
+            # Parse comma-separated tags
+            tags = [t.strip().strip('"\'') for t in tags_text.split(',')]
+            # Format as [[tag]]
+            return [f"[[{tag}]]" for tag in tags if tag and len(tag) < 30]
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return []
+
+def find_connections(content):
+    """Find related notes using similarity search."""
+    if not cfg()['llm']['enable_metis']:
+        return []
+
+    # Simple keyword-based search in existing notes
+    # Extract key terms (nouns, important words)
+    words = content.lower().split()
+    keywords = [w for w in words if len(w) > 5][:cfg()['metis']['max_keywords']]
+
+    if not keywords:
+        return []
+
+    connections = []
+    try:
+        # Search for notes containing these keywords
+        for note_file in NOTES_DIR.glob('*.md'):
+            if note_file.name.startswith('_'):
+                continue
+            try:
+                note_content = note_file.read_text().lower()
+                matches = sum(1 for kw in keywords if kw in note_content)
+                if matches >= 2:
+                    # Extract title from frontmatter or filename
+                    title = note_file.stem
+                    if ' - ' in title:
+                        title = title.split(' - ', 1)[1]
+                    connections.append(title)
+                    if len(connections) >= cfg()['metis']['max_connections']:
+                        break
+            except:
+                continue
+    except:
+        pass
+
+    return connections
+
+def surface_serendipity():
+    """Surface a random old note for inspiration."""
+    if not cfg()['llm']['enable_metis']:
+        return None
+
+    try:
+        import random
+        age_seconds = cfg()['metis']['serendipity_age_days'] * 86400
+        old_notes = []
+        cutoff = datetime.now().timestamp() - age_seconds
+
+        for note_file in NOTES_DIR.glob('*.md'):
+            if note_file.name.startswith('_'):
+                continue
+            if note_file.stat().st_mtime < cutoff:
+                old_notes.append(note_file)
+
+        if old_notes:
+            selected = random.choice(old_notes)
+            title = selected.stem
+            if ' - ' in title:
+                title = title.split(' - ', 1)[1]
+
+            # Get first line of content
+            try:
+                content = selected.read_text()
+                lines = [l for l in content.split('\n') if l.strip() and not l.startswith('---')]
+                preview = lines[0][:100] if lines else ""
+                return f"💡 Serendipity: {title}\n   {preview}..."
+            except:
+                return f"💡 Serendipity: {title}"
+    except:
+        pass
+    return None
+
+def create_note(content, title=None, warmup_proc=None):
+    """Create a kernel note with the given content."""
+    ts = timestamp()
+
+    if title:
+        slug = slugify(title)
+    else:
+        slug = smart_title(content, warmup_proc)
+
+    if slug:
+        filename = f"{ts} - {slug}.md"
+    else:
+        filename = f"{ts}.md"
+
+    filepath = NOTES_DIR / filename
+
+    # Metis features: suggest tags, find connections, surface serendipity
+    base_tags = list(cfg()['defaults']['tags'])
+
+    # Add model tag if LLM features were used
+    if cfg()['llm']['enable_metis'] and cfg()['llm']['model']:
+        model_name = cfg()['llm']['model'].split(':')[0]
+        base_tags.append(f"[[llm:{model_name}]]")
+
+    if cfg()['llm']['enable_metis']:
+        suggested = suggest_tags(content, warmup_proc)
+        if suggested:
+            base_tags.extend(suggested)
+
+    tags_str = ", ".join(base_tags)
+
+    # Build note content
+    author = cfg()['defaults']['author']
+    author_line = f"\nauthor: {author}" if author else ""
+    note_content = f"""---
+title: {slug if slug else 'Untitled capture'}{author_line}
+date: {datetime.now().strftime("%Y-%m-%d %H:%M")}
+tags: {tags_str}
+---
+
+{content}
+"""
+
+    filepath.write_text(note_content)
+    print(f"✓ Created: {filepath.name}")
+
+    # Show connections and serendipity
+    if cfg()['llm']['enable_metis']:
+        connections = find_connections(content)
+        if connections:
+            print(f"  🔗 Related: {', '.join(connections)}")
+
+        serendipity = surface_serendipity()
+        if serendipity:
+            print(f"  {serendipity}")
+
+    return filepath
+
+def capture_quick(text):
+    """Capture a one-liner idea."""
+    if not text:
+        print("Error: No text provided")
+        sys.exit(1)
+    # Start warming up Ollama immediately
+    warmup_proc = warmup_ollama()
+    return create_note(text, warmup_proc=warmup_proc)
+
+def capture_text():
+    """Open editor for longer text capture."""
+    # Start warming up Ollama before editor opens
+    warmup_proc = warmup_ollama()
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        f.write("# Capture\n\n")
+        temp_path = f.name
+
+    # Open editor (user types while Ollama warms up)
+    subprocess.run([cfg()['editor'], temp_path])
+
+    # Read content
+    content = Path(temp_path).read_text().strip()
+    os.unlink(temp_path)
+
+    # Skip if only header remains
+    if content == "# Capture" or not content:
+        print("Capture cancelled (empty)")
+        return None
+
+    # Remove the header if present
+    if content.startswith("# Capture\n"):
+        content = content[len("# Capture\n"):].strip()
+
+    # Use smart title with warmed-up Ollama
+    return create_note(content, warmup_proc=warmup_proc)
+
+def capture_photo(filepath=None):
+    """OCR an image file."""
+    if filepath is None:
+        # Try to get from clipboard or prompt
+        print("Enter path to image (or drag file here):")
+        filepath = input().strip().strip("'\"")
+
+    filepath = Path(filepath).expanduser()
+
+    if not filepath.exists():
+        print(f"Error: File not found: {filepath}")
+        sys.exit(1)
+
+    # Try Apple Vision first (best for handwriting), fall back to tesseract
+    text = ocr_apple_vision(filepath)
+    if not text:
+        text = ocr_tesseract(filepath)
+
+    if not text:
+        print("Error: Could not extract text from image")
+        sys.exit(1)
+
+    print(f"\n--- Extracted text ---\n{text}\n---")
+
+    # Ask for confirmation/editing
+    print("\nOptions: [s]ave as-is, [e]dit first, [c]ancel")
+    choice = input().strip().lower()
+
+    if choice == 'c':
+        print("Cancelled")
+        return None
+    elif choice == 'e':
+        # Open in editor
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write(text)
+            temp_path = f.name
+        subprocess.run([cfg()['editor'], temp_path])
+        text = Path(temp_path).read_text().strip()
+        os.unlink(temp_path)
+
+    # Use smart title for OCR captures
+    return create_note(text)
+
+def ocr_apple_vision(filepath):
+    """Use macOS Vision framework for OCR (best for handwriting)."""
+    try:
+        import Quartz
+        from Foundation import NSURL
+        import Vision
+
+        # Load image
+        image_url = NSURL.fileURLWithPath_(str(filepath))
+        image_source = Quartz.CGImageSourceCreateWithURL(image_url, None)
+        if not image_source:
+            return None
+
+        cg_image = Quartz.CGImageSourceCreateImageAtIndex(image_source, 0, None)
+        if not cg_image:
+            return None
+
+        # Create request
+        request = Vision.VNRecognizeTextRequest.alloc().init()
+        request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
+        request.setUsesLanguageCorrection_(True)
+
+        # Process
+        handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(cg_image, None)
+        success = handler.performRequests_error_([request], None)
+
+        if not success:
+            return None
+
+        # Extract text
+        results = request.results()
+        if not results:
+            return None
+
+        text_pieces = []
+        for observation in results:
+            text_pieces.append(observation.topCandidates_(1)[0].string())
+
+        return '\n'.join(text_pieces)
+
+    except Exception as e:
+        print(f"Vision OCR failed: {e}")
+        return None
+
+def ocr_tesseract(filepath):
+    """Fallback to tesseract for OCR."""
+    try:
+        result = subprocess.run(
+            ['tesseract', str(filepath), 'stdout'],
+            capture_output=True,
+            text=True
+        )
+        return result.stdout.strip() if result.returncode == 0 else None
+    except Exception as e:
+        print(f"Tesseract OCR failed: {e}")
+        return None
+
+def ocr_pdf(filepath):
+    """OCR a PDF file by converting pages to images and running Vision OCR."""
+    try:
+        import Quartz
+        from Foundation import NSURL
+
+        # Open PDF
+        pdf_url = NSURL.fileURLWithPath_(str(filepath))
+        pdf_doc = Quartz.CGPDFDocumentCreateWithURL(pdf_url)
+
+        if not pdf_doc:
+            print(f"  Could not open PDF: {filepath}")
+            return None
+
+        page_count = Quartz.CGPDFDocumentGetNumberOfPages(pdf_doc)
+        print(f"  PDF has {page_count} page(s)")
+
+        all_text = []
+
+        for page_num in range(1, page_count + 1):
+            # Render PDF page to image
+            page = Quartz.CGPDFDocumentGetPage(pdf_doc, page_num)
+            if not page:
+                continue
+
+            # Get page dimensions
+            media_box = Quartz.CGPDFPageGetBoxRect(page, Quartz.kCGPDFMediaBox)
+            width = int(media_box.size.width * 2)  # 2x for better OCR
+            height = int(media_box.size.height * 2)
+
+            # Create bitmap context
+            color_space = Quartz.CGColorSpaceCreateDeviceRGB()
+            context = Quartz.CGBitmapContextCreate(
+                None, width, height, 8, width * 4,
+                color_space, Quartz.kCGImageAlphaPremultipliedLast
+            )
+
+            # Fill white background
+            Quartz.CGContextSetRGBFillColor(context, 1, 1, 1, 1)
+            Quartz.CGContextFillRect(context, Quartz.CGRectMake(0, 0, width, height))
+
+            # Scale and draw PDF page
+            Quartz.CGContextScaleCTM(context, 2, 2)
+            Quartz.CGContextDrawPDFPage(context, page)
+
+            # Get image from context
+            cg_image = Quartz.CGBitmapContextCreateImage(context)
+
+            if cg_image:
+                # OCR the rendered page
+                import Vision
+                request = Vision.VNRecognizeTextRequest.alloc().init()
+                request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
+                request.setUsesLanguageCorrection_(True)
+
+                handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(cg_image, None)
+                success = handler.performRequests_error_([request], None)
+
+                if success and request.results():
+                    page_text = []
+                    for observation in request.results():
+                        page_text.append(observation.topCandidates_(1)[0].string())
+
+                    if page_text:
+                        if page_count > 1:
+                            all_text.append(f"[Page {page_num}]")
+                        all_text.extend(page_text)
+                        print(f"  Page {page_num}: {len(page_text)} lines")
+
+        return '\n'.join(all_text) if all_text else None
+
+    except Exception as e:
+        print(f"PDF OCR failed: {e}")
+        # Fallback: try ocrmypdf if available
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as f:
+                temp_ocr = f.name
+            subprocess.run(['ocrmypdf', '--force-ocr', str(filepath), temp_ocr],
+                         capture_output=True, check=True)
+            # Extract text from OCR'd PDF
+            result = subprocess.run(['pdftotext', temp_ocr, '-'],
+                                  capture_output=True, text=True)
+            os.unlink(temp_ocr)
+            return result.stdout.strip() if result.returncode == 0 else None
+        except Exception:
+            return None
+
+def _start_recording():
+    """Start audio recording, return (process, audio_path)."""
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+        temp_audio = f.name
+
+    try:
+        proc = subprocess.Popen(
+            ['rec', '-q', temp_audio],
+            stdin=subprocess.PIPE
+        )
+    except FileNotFoundError:
+        proc = subprocess.Popen(
+            ['ffmpeg', '-f', 'avfoundation', '-i', ':0', '-y', '-loglevel', 'quiet', temp_audio],
+            stdin=subprocess.PIPE
+        )
+
+    return proc, temp_audio
+
+def _whisper_cmd(audio_path):
+    """Build Whisper command with initial prompt from dictionary if available."""
+    cmd = ['whisper', str(audio_path), '--model', cfg()['llm']['whisper_model'], '--output_format', 'txt', '--output_dir', '/tmp']
+    vocab, _ = load_whisper_dictionary()
+    prompt = build_whisper_prompt(vocab)
+    if prompt:
+        cmd.extend(['--initial_prompt', prompt])
+    return cmd
+
+def _correct_transcription(text):
+    """Apply dictionary corrections to transcribed text."""
+    _, corrections = load_whisper_dictionary()
+    return apply_corrections(text, corrections)
+
+def _start_transcription(audio_path):
+    """Start Whisper transcription in background, return (process, audio_path, txt_path)."""
+    txt_path = Path('/tmp') / (Path(audio_path).stem + '.txt')
+    proc = subprocess.Popen(
+        _whisper_cmd(audio_path),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    return proc, audio_path, txt_path
+
+def _finish_transcription(pending):
+    """Wait for transcription to complete, file the note. Returns created filepath or None."""
+    proc, audio_path, txt_path = pending
+    proc.wait()
+
+    text = None
+    if txt_path.exists():
+        text = _correct_transcription(txt_path.read_text().strip())
+        txt_path.unlink()
+
+    os.unlink(audio_path)
+
+    if not text:
+        print("  (transcription failed, skipped)")
+        return None
+
+    print(f"  Filed: {len(text)} chars")
+    return create_note(text)
+
+def capture_voice():
+    """Record voice and transcribe with Whisper."""
+    print("Recording... Press Enter to stop.")
+
+    rec_proc, temp_audio = _start_recording()
+
+    input()  # Wait for Enter
+    rec_proc.terminate()
+    rec_proc.wait()
+
+    print("Transcribing...")
+
+    # Transcribe with Whisper
+    try:
+        result = subprocess.run(
+            _whisper_cmd(temp_audio),
+            capture_output=True,
+            text=True
+        )
+
+        # Read transcription
+        txt_file = Path('/tmp') / (Path(temp_audio).stem + '.txt')
+        if txt_file.exists():
+            text = _correct_transcription(txt_file.read_text().strip())
+            txt_file.unlink()
+        else:
+            print("Error: Transcription failed")
+            os.unlink(temp_audio)
+            return None
+
+    except Exception as e:
+        print(f"Whisper failed: {e}")
+        os.unlink(temp_audio)
+        return None
+
+    os.unlink(temp_audio)
+
+    print(f"\n--- Transcription ---\n{text}\n---")
+
+    # Ask for confirmation/editing
+    print("\nOptions: [s]ave as-is, [e]dit first, [c]ancel")
+    choice = input().strip().lower()
+
+    if choice == 'c':
+        print("Cancelled")
+        return None
+    elif choice == 'e':
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write(text)
+            temp_path = f.name
+        subprocess.run([cfg()['editor'], temp_path])
+        text = Path(temp_path).read_text().strip()
+        os.unlink(temp_path)
+
+    # Use smart title for voice captures
+    return create_note(text)
+
+def capture_voice_multi():
+    """Record multiple voice notes with pipelined transcription.
+
+    Pipeline: as soon as a recording stops, transcription and filing
+    begin in a background thread. The next recording starts immediately.
+    Before starting a new background job, we wait for the previous one
+    to finish (at most one in flight at a time).
+    """
+    note_num = 0
+    created = [0]  # list so the thread can mutate it
+    filing_thread = None
+
+    def _file_note(transcription_pending, num):
+        """Run in background thread: wait for Whisper, then create note."""
+        result = _finish_transcription(transcription_pending)
+        if result:
+            created[0] += 1
+            print(f"  Note {num} filed.")
+        else:
+            print(f"  Note {num} failed.")
+
+    print("Multi-capture mode. Press Enter to stop each recording.")
+    print("Type 'q' + Enter to finish the session.\n")
+
+    while True:
+        note_num += 1
+        print(f"--- Note {note_num} ---")
+        print("Recording... (Enter to stop, 'q' to finish)")
+
+        rec_proc, temp_audio = _start_recording()
+
+        user_input = input().strip().lower()
+        rec_proc.terminate()
+        rec_proc.wait()
+
+        if user_input == 'q':
+            os.unlink(temp_audio)
+            break
+
+        # Wait for previous filing thread before starting a new one
+        if filing_thread:
+            filing_thread.join()
+            filing_thread = None
+
+        # Start transcription + filing in background thread
+        print(f"  Transcribing note {note_num} in background...")
+        pending = _start_transcription(temp_audio)
+        filing_thread = threading.Thread(target=_file_note, args=(pending, note_num))
+        filing_thread.start()
+
+    # Wait for final note to finish filing
+    if filing_thread:
+        print("Processing final note...")
+        filing_thread.join()
+
+    print(f"\n{'='*40}")
+    print(f"Session complete: {created[0]} note{'s' if created[0] != 1 else ''} created")
+    print(f"{'='*40}")
+
+def process_capture_folder():
+    """Process items in the _Capture folder (from iOS Shortcuts)."""
+    capture_dir = Path(cfg()['capture_dir']).expanduser()
+    if not capture_dir.exists():
+        print(f"Capture folder not found: {capture_dir}")
+        return
+
+    items = [
+        item for item in capture_dir.iterdir()
+        if item.is_file() and item.name not in ['README.md', '.DS_Store']
+    ]
+    if not items:
+        print("No items to process")
+        return
+
+    print(f"Processing {len(items)} item{'s' if len(items) != 1 else ''}...\n")
+
+    # Track results
+    processed = {'text': 0, 'photo': 0, 'pdf': 0, 'voice': 0, 'skipped': 0}
+
+    for idx, item in enumerate(items, 1):
+        print(f"[{idx}/{len(items)}] {item.name}")
+
+        if item.suffix.lower() in ['.txt', '.md']:
+            # Text file - create note directly with smart title
+            content = item.read_text().strip()
+            if content:
+                create_note(content)
+                processed['text'] += 1
+            item.unlink()
+
+        elif item.suffix.lower() in ['.jpg', '.jpeg', '.png', '.heic']:
+            # Image - OCR
+            print(f"  → OCR processing...")
+            text = ocr_apple_vision(item) or ocr_tesseract(item)
+            if text:
+                print(f"  ✓ Extracted {len(text)} chars")
+                create_note(text)  # Smart title from OCR'd text
+                processed['photo'] += 1
+            else:
+                print(f"  ✗ Could not OCR image")
+                processed['skipped'] += 1
+            item.unlink()
+
+        elif item.suffix.lower() == '.pdf':
+            # PDF - OCR each page
+            print(f"  → OCR processing PDF...")
+            text = ocr_pdf(item)
+            if text:
+                print(f"  ✓ Extracted {len(text)} chars")
+                create_note(text)  # Smart title from PDF text
+                processed['pdf'] += 1
+            else:
+                print(f"  ✗ Could not OCR PDF")
+                processed['skipped'] += 1
+            item.unlink()
+
+        elif item.suffix.lower() in ['.m4a', '.mp3', '.wav', '.caf']:
+            # Audio - transcribe
+            print(f"  → Transcribing...")
+            try:
+                result = subprocess.run(
+                    _whisper_cmd(item),
+                    capture_output=True,
+                    text=True
+                )
+                txt_file = Path('/tmp') / (item.stem + '.txt')
+                if txt_file.exists():
+                    text = _correct_transcription(txt_file.read_text().strip())
+                    txt_file.unlink()
+                    if text:
+                        print(f"  ✓ Transcribed {len(text)} chars")
+                        create_note(text)  # Smart title from transcription
+                        processed['voice'] += 1
+                else:
+                    print(f"  ✗ Transcription failed")
+                    processed['skipped'] += 1
+            except Exception as e:
+                print(f"  ✗ Error: {e}")
+                processed['skipped'] += 1
+            item.unlink()
+        else:
+            print(f"  → Skipping unknown type: {item.suffix}")
+            processed['skipped'] += 1
+
+    # Summary
+    print(f"\n{'='*40}")
+    print(f"Processing complete!")
+    total = sum(processed.values())
+    created = total - processed.get('skipped', 0)
+
+    if total > 0:
+        for typ, count in processed.items():
+            if count > 0:
+                emoji = {'text': '📝', 'photo': '📷', 'pdf': '📄', 'voice': '🎤', 'skipped': '⊘'}[typ]
+                print(f"  {emoji} {typ.title()}: {count}")
+    print(f"{'='*40}")
+
+    # Send macOS notification
+    if created > 0:
+        try:
+            subprocess.run([
+                'osascript', '-e',
+                f'display notification "Created {created} note{"s" if created != 1 else ""}" with title "Capture" sound name "Glass"'
+            ], capture_output=True)
+        except:
+            pass
+
+def interactive_menu():
+    """Show interactive menu."""
+    dest_display = shorten_path(NOTES_DIR)
+    print(f"""
+╔═══════════════════════════════════╗
+║         CAPTURE                   ║
+╠═══════════════════════════════════╣
+║  [q] Quick one-liner              ║
+║  [t] Text block (editor)          ║
+║  [p] Photo/image (OCR)            ║
+║  [v] Voice recording              ║
+║  [r] Process _Capture folder      ║
+║  [x] Exit                         ║
+╚═══════════════════════════════════╝
+  → {dest_display}
+""")
+
+    choice = input("Select: ").strip().lower()
+
+    if choice == 'q':
+        print("Enter idea (one line):")
+        text = input().strip()
+        if text:
+            capture_quick(text)
+    elif choice == 't':
+        capture_text()
+    elif choice == 'p':
+        capture_photo()
+    elif choice == 'v':
+        capture_voice()
+    elif choice == 'r':
+        process_capture_folder()
+    elif choice == 'x':
+        print("Bye")
+    else:
+        print("Unknown option")
+
+def main():
+    global NOTES_DIR
+
+    parser = argparse.ArgumentParser(description='Quick idea capture tool')
+    parser.add_argument('--dest', '-d', type=str, help='Destination directory (default: Notes/)')
+    parser.add_argument('--config', type=str, metavar='PATH', help='Path to config file')
+    parser.add_argument('--init-config', action='store_true',
+                        help='Generate default config at ~/.config/capture/config.yaml')
+    subparsers = parser.add_subparsers(dest='command')
+
+    # Shared --dest for subcommands (argparse doesn't pass global args after subcommand)
+    dest_args = {'flags': ['--dest', '-d'], 'kwargs': dict(type=str, help='Destination directory (default: Notes/)')}
+
+    # Quick capture
+    quick_parser = subparsers.add_parser('quick', help='One-liner capture')
+    quick_parser.add_argument('--dest', '-d', type=str, help=argparse.SUPPRESS)
+    quick_parser.add_argument('text', nargs='+', help='Text to capture')
+
+    # Text capture
+    text_parser = subparsers.add_parser('text', help='Open editor for text capture')
+    text_parser.add_argument('--dest', '-d', type=str, help=argparse.SUPPRESS)
+
+    # Photo capture
+    photo_parser = subparsers.add_parser('photo', help='OCR from image')
+    photo_parser.add_argument('--dest', '-d', type=str, help=argparse.SUPPRESS)
+    photo_parser.add_argument('file', nargs='?', help='Image file path')
+
+    # Voice capture
+    voice_parser = subparsers.add_parser('voice', help='Record and transcribe voice')
+    voice_parser.add_argument('--dest', '-d', type=str, help=argparse.SUPPRESS)
+    voice_parser.add_argument('--multi', '-m', action='store_true',
+                              help='Record multiple notes with pipelined transcription')
+
+    # Process folder
+    process_parser = subparsers.add_parser('process', help='Process _Capture folder')
+    process_parser.add_argument('--dest', '-d', type=str, help=argparse.SUPPRESS)
+
+    args = parser.parse_args()
+
+    # Handle --init-config before anything else
+    if args.init_config:
+        config_dir = Path.home() / '.config' / 'capture'
+        config_file = config_dir / 'config.yaml'
+        if config_file.exists():
+            print(f"Config already exists: {config_file}")
+            print("Delete it first if you want to regenerate.")
+            sys.exit(1)
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_file.write_text(DEFAULT_CONFIG_TEMPLATE)
+        print(f"Created: {config_file}")
+        sys.exit(0)
+
+    # Load config (with explicit path if given)
+    global _config
+    if args.config:
+        _config = load_config(args.config)
+
+    # Override destination if specified (check both global and subcommand level)
+    default_notes_dir = Path(cfg()['notes_dir']).expanduser()
+    dest = args.dest
+    if dest:
+        NOTES_DIR = Path(dest).expanduser().resolve()
+    elif args.command:
+        # Non-interactive subcommand: use default
+        NOTES_DIR = default_notes_dir
+    else:
+        # Interactive mode: ask where to save
+        NOTES_DIR = choose_destination()
+
+    # Ensure directories exist
+    NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    capture_dir = Path(cfg()['capture_dir']).expanduser()
+    capture_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save non-default destination for future recall
+    if NOTES_DIR != default_notes_dir:
+        save_recent_destination(NOTES_DIR)
+
+    if args.command == 'quick':
+        capture_quick(' '.join(args.text))
+    elif args.command == 'text':
+        capture_text()
+    elif args.command == 'photo':
+        capture_photo(args.file)
+    elif args.command == 'voice':
+        if args.multi:
+            capture_voice_multi()
+        else:
+            capture_voice()
+    elif args.command == 'process':
+        process_capture_folder()
+    else:
+        interactive_menu()
+
+if __name__ == '__main__':
+    main()
