@@ -37,7 +37,7 @@ DEFAULTS = {
         'title_timeout': 20,
         'tag_timeout': 15,
         'content_threshold': 30,
-        'whisper_model': 'base',
+        'whisper_model': 'medium',
     },
     'defaults': {
         'tags': ['[[kernel]]', '[[captured]]'],
@@ -353,19 +353,33 @@ def choose_destination():
         return dest if dest else default_notes_dir
 
 
+_DEFAULT_TEMPLATES = {
+    'general': "This is a voice memo that may reference {terms}.",
+    'crypto': "This discussion covers cryptography and cybersecurity history, including {terms}.",
+    'philosophy': "This lecture discusses philosophical concepts including {terms}.",
+    'journalism': "This is about journalism, media, and investigative reporting, referencing {terms}.",
+    'academic': "This is an academic discussion referencing {terms}.",
+}
+
+
 def load_whisper_dictionary():
     """Load and merge system + project-level whisper dictionaries.
 
-    Returns (prompt_vocab: list[str], corrections: dict[str, str]).
-    Project dictionary is looked up relative to NOTES_DIR.
+    Returns (vocab_by_topic: dict[str, list[str]],
+             corrections: dict[str, str],
+             templates: dict[str, str]).
+
+    Supports both old format (prompt_vocab as flat list) and new format
+    (prompt_vocab as topic-keyed dict with prompt_templates).
     """
     try:
         import yaml
     except ImportError:
-        return [], {}
+        return {}, {}, dict(_DEFAULT_TEMPLATES)
 
-    prompt_vocab = []
+    vocab_by_topic = {}
     corrections = {}
+    templates = dict(_DEFAULT_TEMPLATES)
 
     dict_paths = [NOTES_DIR / 'whisper-dictionary.yaml',
                   NOTES_DIR.parent / 'whisper-dictionary.yaml']
@@ -378,21 +392,78 @@ def load_whisper_dictionary():
             try:
                 data = yaml.safe_load(dict_path.read_text())
                 if data.get('prompt_vocab'):
-                    prompt_vocab.extend(data['prompt_vocab'])
+                    pv = data['prompt_vocab']
+                    if isinstance(pv, list):
+                        # Old format: flat list -> normalize to general topic
+                        vocab_by_topic.setdefault('general', [])
+                        vocab_by_topic['general'].extend(pv)
+                    elif isinstance(pv, dict):
+                        # New format: topic-keyed dict
+                        for topic, terms in pv.items():
+                            if isinstance(terms, list):
+                                vocab_by_topic.setdefault(topic, [])
+                                vocab_by_topic[topic].extend(terms)
                 if data.get('corrections'):
                     corrections.update(data['corrections'])
+                if data.get('prompt_templates'):
+                    templates.update(data['prompt_templates'])
             except Exception:
                 pass
 
-    return prompt_vocab, corrections
+    return vocab_by_topic, corrections, templates
 
 
-def build_whisper_prompt(vocab):
-    """Build an initial prompt string from vocabulary list."""
-    if not vocab:
+def _count_whisper_tokens(text):
+    """Count tokens using Whisper's GPT-2 tokenizer."""
+    try:
+        import tiktoken
+        enc = tiktoken.get_encoding("gpt2")
+        return len(enc.encode(text))
+    except ImportError:
+        # Rough estimate: ~1.3 tokens per word
+        return int(len(text.split()) * 1.3)
+
+
+def build_whisper_prompt(vocab_by_topic, templates, topic="general"):
+    """Build a natural-language Whisper initial_prompt for the given topic.
+
+    Collects topic-specific terms plus general terms, fills a template
+    sentence, and trims from the beginning if over 224 tokens (preserving
+    high-priority terms at the end of the prompt).
+    """
+    # Collect terms: topic-specific first, then general
+    terms = []
+    if topic != "general" and topic in vocab_by_topic:
+        terms.extend(vocab_by_topic[topic])
+    terms.extend(vocab_by_topic.get('general', []))
+    # Add other topics' terms at lowest priority
+    for t, t_terms in vocab_by_topic.items():
+        if t not in (topic, 'general'):
+            terms.extend(t_terms)
+
+    # Deduplicate preserving order
+    seen = set()
+    unique_terms = []
+    for t in terms:
+        if t not in seen:
+            seen.add(t)
+            unique_terms.append(t)
+    terms = unique_terms
+
+    if not terms:
         return None
-    # Whisper uses the initial prompt to bias toward these spellings
-    return ". ".join(dict.fromkeys(vocab)) + "."
+
+    template = templates.get(topic, templates.get('general', "This is a voice memo referencing {terms}."))
+    MAX_TOKENS = 224
+
+    # Trim terms from the beginning (lowest priority) until under token limit
+    while terms:
+        prompt = template.format(terms=", ".join(terms))
+        if _count_whisper_tokens(prompt) <= MAX_TOKENS:
+            return prompt
+        terms.pop(0)  # Remove lowest-priority term
+
+    return None
 
 
 def apply_corrections(text, corrections):
@@ -403,6 +474,58 @@ def apply_corrections(text, corrections):
     for wrong, right in corrections.items():
         text = re.sub(re.escape(wrong), right, text, flags=re.IGNORECASE)
     return text
+
+
+def correct_with_llm(text, vocab_by_topic):
+    """Use Ollama to correct transcription errors using full vocabulary as reference.
+
+    The vocabulary list has no token limit here (unlike Whisper's initial_prompt),
+    so all terms from all topics can be used for correction guidance.
+
+    Returns corrected text, or original text if LLM fails/is unavailable.
+    """
+    if not cfg()['llm']['enable_metis']:
+        return text
+
+    # Flatten all vocab terms across all topics
+    all_terms = []
+    for terms in vocab_by_topic.values():
+        all_terms.extend(terms)
+
+    if not all_terms:
+        return text
+
+    vocab_list = ", ".join(dict.fromkeys(all_terms))  # deduplicate
+    timeout = cfg()['llm'].get('correction_timeout', 30)
+
+    prompt = (
+        "You are a copy editor fixing speech-to-text errors. "
+        "The transcription below may contain misrecognized proper nouns and technical terms. "
+        f"Use ONLY this vocabulary list to guide corrections: {vocab_list}\n\n"
+        "STRICT RULES:\n"
+        "- Replace misheard words with the closest match from the vocabulary list\n"
+        "- Do NOT add any commentary, parentheticals, or explanations\n"
+        "- Do NOT change words that are already correct\n"
+        "- Do NOT add or remove any sentences\n"
+        "- Output ONLY the corrected transcription text, nothing else\n\n"
+        f"Transcription:\n{text}\n\nCorrected transcription:"
+    )
+
+    try:
+        result = subprocess.run(
+            ['ollama', 'run', cfg()['llm']['model'], prompt],
+            capture_output=True, text=True, timeout=timeout
+        )
+        if result.returncode == 0:
+            corrected = result.stdout.strip()
+            # Sanity check: output should be similar length to input
+            if corrected and 0.5 < len(corrected) / max(len(text), 1) < 2.0:
+                return corrected
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+    return text
+
 
 def timestamp():
     """Generate timestamp for note filename."""
@@ -441,7 +564,12 @@ def generate_title_ollama(content, warmup_proc=None):
         except:
             warmup_proc.kill()
 
-    prompt = f"""Generate a concise 3-8 word title for this note. Return ONLY the title, no quotes or explanation.
+    prompt = f"""Generate a concise 3-8 word title for this note. Return ONLY the title on a single line. No quotes, no explanation, no preamble.
+
+Examples of good titles:
+- Cypherpunk Political Diversity Beyond Anarchism
+- Shannon Entropy and Cryptographic Key Length
+- Interview Notes from Hellman December 2021
 
 Note content:
 {content[:1000]}
@@ -492,7 +620,9 @@ def suggest_tags(content, warmup_proc=None):
         except:
             warmup_proc.kill()
 
-    prompt = f"""Suggest 2-4 relevant tags for this note. Tags should be single words or short phrases (2-3 words max). Return ONLY the tags as a comma-separated list, no explanation.
+    prompt = f"""Suggest exactly 3 tags for this note. Each tag should be 1-2 words. Return ONLY a comma-separated list on a single line. No hashtags, no explanation, no numbering.
+
+Example output: cryptography, surveillance, policy analysis
 
 Note content:
 {content[:500]}
@@ -870,6 +1000,32 @@ def ocr_pdf(filepath):
         except Exception:
             return None
 
+def _find_local_mic():
+    """Find the local (non-iPhone) microphone index for avfoundation."""
+    try:
+        result = subprocess.run(
+            ['ffmpeg', '-f', 'avfoundation', '-list_devices', 'true', '-i', ''],
+            capture_output=True, text=True, timeout=5
+        )
+        lines = result.stderr.splitlines()
+        in_audio = False
+        for line in lines:
+            if 'audio devices' in line.lower():
+                in_audio = True
+                continue
+            if in_audio and '[' in line:
+                # Prefer MacBook/Built-in mic over iPhone/external
+                import re
+                m = re.search(r'\[(\d+)\]\s+(.+)', line)
+                if m:
+                    idx, name = m.group(1), m.group(2)
+                    if 'MacBook' in name or 'Built-in' in name:
+                        return idx
+    except Exception:
+        pass
+    return '0'
+
+
 def _start_recording():
     """Start audio recording, return (process, audio_path)."""
     with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -881,57 +1037,112 @@ def _start_recording():
             stdin=subprocess.PIPE
         )
     except FileNotFoundError:
+        mic_idx = _find_local_mic()
         proc = subprocess.Popen(
-            ['ffmpeg', '-f', 'avfoundation', '-i', ':0', '-y', '-loglevel', 'quiet', temp_audio],
+            ['ffmpeg', '-f', 'avfoundation', '-i', f':{mic_idx}', '-y', '-loglevel', 'quiet', temp_audio],
             stdin=subprocess.PIPE
         )
 
     return proc, temp_audio
 
-def _whisper_cmd(audio_path):
-    """Build Whisper command with initial prompt from dictionary if available."""
-    cmd = ['whisper', str(audio_path), '--model', cfg()['llm']['whisper_model'], '--output_format', 'txt', '--output_dir', '/tmp']
-    vocab, _ = load_whisper_dictionary()
-    prompt = build_whisper_prompt(vocab)
-    if prompt:
-        cmd.extend(['--initial_prompt', prompt])
-    return cmd
+_whisper_model = None
 
-def _correct_transcription(text):
-    """Apply dictionary corrections to transcribed text."""
-    _, corrections = load_whisper_dictionary()
-    return apply_corrections(text, corrections)
+def _get_whisper_model():
+    """Load and cache the Whisper model. Loads once, reused across calls."""
+    global _whisper_model
+    if _whisper_model is None:
+        import whisper
+        model_name = cfg()['llm']['whisper_model']
+        print(f"  Loading Whisper model ({model_name})...")
+        _whisper_model = whisper.load_model(model_name)
+    return _whisper_model
 
-def _start_transcription(audio_path):
-    """Start Whisper transcription in background, return (process, audio_path, txt_path)."""
-    txt_path = Path('/tmp') / (Path(audio_path).stem + '.txt')
-    proc = subprocess.Popen(
-        _whisper_cmd(audio_path),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
-    return proc, audio_path, txt_path
 
-def _finish_transcription(pending):
-    """Wait for transcription to complete, file the note. Returns created filepath or None."""
-    proc, audio_path, txt_path = pending
-    proc.wait()
+def _transcribe_audio(audio_path, topic="general", correct=True):
+    """Transcribe audio using Whisper Python API with optional LLM correction.
 
-    text = None
-    if txt_path.exists():
-        text = _correct_transcription(txt_path.read_text().strip())
-        txt_path.unlink()
+    Pipeline: Whisper -> regex corrections -> LLM correction (optional)
 
-    os.unlink(audio_path)
+    Returns transcribed text with corrections applied, or None on failure.
+    """
+    vocab_by_topic, corrections, templates = load_whisper_dictionary()
+    prompt = build_whisper_prompt(vocab_by_topic, templates, topic)
+
+    # Use Python API (default) or fall back to CLI
+    backend = cfg()['llm'].get('whisper_backend', 'python')
+    if backend == 'cli':
+        text = _transcribe_audio_cli(audio_path, prompt, corrections)
+    else:
+        try:
+            import warnings
+            warnings.filterwarnings("ignore", message="FP16 is not supported on CPU")
+            model = _get_whisper_model()
+            kwargs = {
+                'language': 'en',
+                'carry_initial_prompt': True,
+                'verbose': False,
+                'compression_ratio_threshold': 1.8,  # catch repetition hallucinations
+            }
+            if prompt:
+                kwargs['initial_prompt'] = prompt
+
+            result = model.transcribe(str(audio_path), **kwargs)
+            text = result["text"].strip()
+        except Exception as e:
+            print(f"  Whisper Python API failed: {e}")
+            text = _transcribe_audio_cli(audio_path, prompt, corrections)
+
+        # Apply regex corrections
+        if text:
+            text = apply_corrections(text, corrections)
 
     if not text:
-        print("  (transcription failed, skipped)")
         return None
 
-    print(f"  Filed: {len(text)} chars")
-    return create_note(text)
+    # LLM correction pass (optional)
+    if correct and cfg()['llm'].get('auto_correct', True):
+        text = correct_with_llm(text, vocab_by_topic)
 
-def capture_voice():
+    return text
+
+
+def _transcribe_audio_cli(audio_path, prompt, corrections):
+    """Legacy CLI-based transcription (fallback)."""
+    cmd = ['whisper', str(audio_path), '--model', cfg()['llm']['whisper_model'],
+           '--output_format', 'txt', '--output_dir', '/tmp']
+    if prompt:
+        cmd.extend(['--initial_prompt', prompt])
+
+    try:
+        subprocess.run(cmd, capture_output=True, text=True)
+        txt_file = Path('/tmp') / (Path(audio_path).stem + '.txt')
+        if txt_file.exists():
+            text = txt_file.read_text().strip()
+            txt_file.unlink()
+            if text:
+                return apply_corrections(text, corrections)
+    except Exception as e:
+        print(f"  Whisper CLI failed: {e}")
+
+    return None
+
+
+def _transcribe_async(audio_path, topic="general"):
+    """Start transcription in a background thread.
+
+    Returns (thread, result_holder, audio_path) where result_holder
+    is a list that will contain [text_or_None] when done.
+    """
+    result_holder = [None]
+
+    def _do_transcribe():
+        result_holder[0] = _transcribe_audio(audio_path, topic)
+
+    thread = threading.Thread(target=_do_transcribe)
+    thread.start()
+    return thread, result_holder, audio_path
+
+def capture_voice(topic="general", correct=True):
     """Record voice and transcribe with Whisper."""
     print("Recording... Press Enter to stop.")
 
@@ -943,30 +1154,12 @@ def capture_voice():
 
     print("Transcribing...")
 
-    # Transcribe with Whisper
-    try:
-        result = subprocess.run(
-            _whisper_cmd(temp_audio),
-            capture_output=True,
-            text=True
-        )
-
-        # Read transcription
-        txt_file = Path('/tmp') / (Path(temp_audio).stem + '.txt')
-        if txt_file.exists():
-            text = _correct_transcription(txt_file.read_text().strip())
-            txt_file.unlink()
-        else:
-            print("Error: Transcription failed")
-            os.unlink(temp_audio)
-            return None
-
-    except Exception as e:
-        print(f"Whisper failed: {e}")
-        os.unlink(temp_audio)
-        return None
-
+    text = _transcribe_audio(temp_audio, topic=topic, correct=correct)
     os.unlink(temp_audio)
+
+    if not text:
+        print("Error: Transcription failed")
+        return None
 
     print(f"\n--- Transcription ---\n{text}\n---")
 
@@ -988,7 +1181,7 @@ def capture_voice():
     # Use smart title for voice captures
     return create_note(text)
 
-def capture_voice_multi():
+def capture_voice_multi(topic="general", correct=True):
     """Record multiple voice notes with pipelined transcription.
 
     Pipeline: as soon as a recording stops, transcription and filing
@@ -1000,12 +1193,14 @@ def capture_voice_multi():
     created = [0]  # list so the thread can mutate it
     filing_thread = None
 
-    def _file_note(transcription_pending, num):
-        """Run in background thread: wait for Whisper, then create note."""
-        result = _finish_transcription(transcription_pending)
-        if result:
+    def _file_async(audio_path, num):
+        """Run in background: transcribe and file note."""
+        text = _transcribe_audio(audio_path, topic=topic, correct=correct)
+        os.unlink(audio_path)
+        if text:
+            create_note(text)
             created[0] += 1
-            print(f"  Note {num} filed.")
+            print(f"  Note {num} filed: {len(text)} chars")
         else:
             print(f"  Note {num} failed.")
 
@@ -1034,8 +1229,7 @@ def capture_voice_multi():
 
         # Start transcription + filing in background thread
         print(f"  Transcribing note {note_num} in background...")
-        pending = _start_transcription(temp_audio)
-        filing_thread = threading.Thread(target=_file_note, args=(pending, note_num))
+        filing_thread = threading.Thread(target=_file_async, args=(temp_audio, note_num))
         filing_thread.start()
 
     # Wait for final note to finish filing
@@ -1047,7 +1241,7 @@ def capture_voice_multi():
     print(f"Session complete: {created[0]} note{'s' if created[0] != 1 else ''} created")
     print(f"{'='*40}")
 
-def process_capture_folder():
+def process_capture_folder(topic="general", correct=True):
     """Process items in the _Capture folder (from iOS Shortcuts)."""
     capture_dir = Path(cfg()['capture_dir']).expanduser()
     if not capture_dir.exists():
@@ -1108,19 +1302,11 @@ def process_capture_folder():
             # Audio - transcribe
             print(f"  → Transcribing...")
             try:
-                result = subprocess.run(
-                    _whisper_cmd(item),
-                    capture_output=True,
-                    text=True
-                )
-                txt_file = Path('/tmp') / (item.stem + '.txt')
-                if txt_file.exists():
-                    text = _correct_transcription(txt_file.read_text().strip())
-                    txt_file.unlink()
-                    if text:
-                        print(f"  ✓ Transcribed {len(text)} chars")
-                        create_note(text)  # Smart title from transcription
-                        processed['voice'] += 1
+                text = _transcribe_audio(item, topic=topic, correct=correct)
+                if text:
+                    print(f"  ✓ Transcribed {len(text)} chars")
+                    create_note(text)
+                    processed['voice'] += 1
                 else:
                     print(f"  ✗ Transcription failed")
                     processed['skipped'] += 1
@@ -1224,10 +1410,18 @@ def main():
     voice_parser.add_argument('--dest', '-d', type=str, help=argparse.SUPPRESS)
     voice_parser.add_argument('--multi', '-m', action='store_true',
                               help='Record multiple notes with pipelined transcription')
+    voice_parser.add_argument('--topic', '-t', type=str, default='general',
+                              help='Topic for vocabulary hints (default: general)')
+    voice_parser.add_argument('--no-correct', action='store_true',
+                              help='Skip LLM post-transcription correction')
 
     # Process folder
     process_parser = subparsers.add_parser('process', help='Process _Capture folder')
     process_parser.add_argument('--dest', '-d', type=str, help=argparse.SUPPRESS)
+    process_parser.add_argument('--topic', '-t', type=str, default='general',
+                              help='Topic for vocabulary hints (default: general)')
+    process_parser.add_argument('--no-correct', action='store_true',
+                              help='Skip LLM post-transcription correction')
 
     args = parser.parse_args()
 
@@ -1277,12 +1471,16 @@ def main():
     elif args.command == 'photo':
         capture_photo(args.file)
     elif args.command == 'voice':
+        topic = getattr(args, 'topic', 'general')
+        correct = not getattr(args, 'no_correct', False)
         if args.multi:
-            capture_voice_multi()
+            capture_voice_multi(topic=topic, correct=correct)
         else:
-            capture_voice()
+            capture_voice(topic=topic, correct=correct)
     elif args.command == 'process':
-        process_capture_folder()
+        topic = getattr(args, 'topic', 'general')
+        correct = not getattr(args, 'no_correct', False)
+        process_capture_folder(topic=topic, correct=correct)
     else:
         interactive_menu()
 
