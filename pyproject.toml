@@ -1,11 +1,11 @@
 [build-system]
 requires = ["setuptools>=64"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "capture-note"
-version = "1.0.0"
-description = "Quick multi-modal note capture with LLM-powered titles and tags"
+version = "1.1.0"
+description = "Quick multi-modal note capture with per-feature model providers"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
@@ -24,7 +24,14 @@ ocr = [
 all = ["capture-note[yaml,ocr]"]
 
 [project.scripts]
-capture = "capture:main"
+capture = "capture.cli:main"
 
-[tool.setuptools]
-py-modules = ["capture"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["capture*"]
+
+[tool.setuptools.package-data]
+capture = [
+    "core/prompts/*.txt",
+    "platforms/*.yaml",
+]

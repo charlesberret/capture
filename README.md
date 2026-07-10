@@ -62,6 +62,31 @@ capture --init-config     # Creates ~/.config/capture/config.yaml
 
 Or copy `config.example.yaml` to `~/.config/capture/config.yaml` and edit.
 
+### Per-feature providers
+
+Each pipeline stage picks its own backend — local models, cloud APIs, or `disabled`:
+
+| Stage | Mac default | iOS default (future) |
+|-------|-------------|----------------------|
+| `transcription` | `whisper_local` | `gemini_flash` |
+| `ocr` | `apple_vision` | `apple_vision` |
+| `title` | `ollama_local` | `gemini_flash` |
+| `tags` | `ollama_local` | `gemini_flash` |
+| `correction` | `ollama_local` | `disabled` |
+| `connections` | `keyword` | `keyword` |
+
+Available backends per stage:
+
+- **transcription:** `whisper_local`, `gemini_flash`, `disabled`
+- **ocr:** `apple_vision`, `tesseract`, `disabled`
+- **title:** `ollama_local`, `gemini_flash`, `truncate`, `disabled`
+- **tags:** `ollama_local`, `gemini_flash`, `disabled`
+- **correction:** `ollama_local`, `gemini_flash`, `claude`, `disabled`
+
+API keys use `env:VAR_NAME` in config (e.g. `api_key: env:GOOGLE_API_KEY`).
+
+The legacy `llm:` config block is still honored and merged into provider settings.
+
 ### Config precedence
 
 1. Environment variables (`OLLAMA_MODEL`, `EDITOR`, `CAPTURE_METIS`)
@@ -70,33 +95,32 @@ Or copy `config.example.yaml` to `~/.config/capture/config.yaml` and edit.
 
 ### Config schema
 
-```yaml
-notes_dir: ~/Notes                    # Where notes are saved
-capture_dir: ~/Notes/_capture-staging # Staging folder for iOS captures
-whisper_dictionary: null              # Custom Whisper vocabulary/corrections
-editor: nano                          # Editor for text captures
+See `config.example.yaml` for the full provider schema. Minimal example:
 
-llm:
-  model: phi3:mini          # Ollama model
-  enable_metis: true        # Smart tags, connections, serendipity
-  title_timeout: 20         # Seconds for title generation
-  tag_timeout: 15           # Seconds for tag suggestion
-  content_threshold: 30     # Min chars before LLM title attempt
-  whisper_model: base       # Whisper model size
+```yaml
+notes_dir: ~/Notes
+capture_dir: ~/Notes/_capture-staging
+
+providers:
+  transcription:
+    default: whisper_local
+  title:
+    default: ollama_local
+  correction:
+    default: claude
+    claude:
+      model: claude-sonnet-4-20250514
+      api_key: env:ANTHROPIC_API_KEY
 
 defaults:
-  tags:                     # Base tags on every capture
+  tags:
     - "[[kernel]]"
     - "[[captured]]"
-  author: ""                # Omitted from frontmatter when empty
 
 metis:
-  serendipity_age_days: 30  # Age threshold for serendipity surfacing
-  max_connections: 3        # Related notes to show
-  max_keywords: 10          # Keywords for connection search
-
-ui:
-  max_recent: 5             # Recent destinations to remember
+  serendipity_age_days: 30
+  max_connections: 3
+  max_keywords: 10
 ```
 
 ## Features
@@ -160,6 +184,29 @@ capture process
 ```
 
 Transcribes audio with Whisper, OCRs images and PDFs with Apple Vision, creates notes with smart titles, and sends a macOS notification when complete.
+
+## Project layout
+
+```
+capture/
+├── cli.py                 # CLI entry point
+├── core/
+│   ├── config.py          # Config + provider defaults
+│   ├── pipeline.py        # Extract → refine → enrich orchestration
+│   ├── note.py            # Note formatting and Metis display
+│   ├── vocabulary.py      # Whisper dictionary helpers
+│   └── prompts/           # Shared prompt templates
+├── providers/
+│   ├── registry.py        # Per-stage provider resolution
+│   ├── transcription/     # whisper_local, gemini_flash
+│   ├── ocr/               # apple_vision, tesseract
+│   ├── enrich/            # ollama_local, gemini_flash, truncate
+│   ├── refine/            # ollama_local, gemini_flash, claude
+│   └── connections/       # keyword search
+└── platforms/
+    ├── mac.defaults.yaml
+    └── ios.defaults.yaml
+```
 
 ## How it works
 

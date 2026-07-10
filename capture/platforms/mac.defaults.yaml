@@ -1,0 +1,14 @@
+# Platform defaults for macOS CLI (bundled reference; merged automatically)
+providers:
+  transcription:
+    default: whisper_local
+  ocr:
+    default: apple_vision
+  title:
+    default: ollama_local
+  tags:
+    default: ollama_local
+  correction:
+    default: ollama_local
+  connections:
+    default: keyword

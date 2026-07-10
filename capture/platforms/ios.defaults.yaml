@@ -1,0 +1,14 @@
+# Platform defaults for iOS app (bundled reference for future Swift implementation)
+providers:
+  transcription:
+    default: gemini_flash
+  ocr:
+    default: apple_vision
+  title:
+    default: gemini_flash
+  tags:
+    default: gemini_flash
+  correction:
+    default: disabled
+  connections:
+    default: keyword

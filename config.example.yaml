@@ -13,28 +13,87 @@
 # Editor for text captures (default: nano)
 # editor: nano
 
-# LLM settings (Ollama)
+# Per-feature model providers — each stage picks its own backend
+providers:
+  transcription:
+    default: whisper_local          # whisper_local | gemini_flash | disabled
+    whisper_local:
+      model: medium                 # tiny, base, small, medium, large
+      backend: python               # python | cli
+    gemini_flash:
+      model: gemini-2.0-flash
+      api_key: env:GOOGLE_API_KEY
+      timeout: 120
+
+  ocr:
+    default: apple_vision           # apple_vision | tesseract | disabled
+    apple_vision:
+      recognition_level: accurate   # accurate | fast
+      language_correction: true
+    tesseract:
+      lang: eng
+
+  title:
+    default: ollama_local           # ollama_local | gemini_flash | truncate | disabled
+    ollama_local:
+      model: phi3:mini
+      timeout: 20
+    gemini_flash:
+      model: gemini-2.0-flash
+      api_key: env:GOOGLE_API_KEY
+      timeout: 20
+
+  tags:
+    default: ollama_local           # ollama_local | gemini_flash | disabled
+    ollama_local:
+      model: phi3:mini
+      timeout: 15
+    gemini_flash:
+      model: gemini-2.0-flash
+      api_key: env:GOOGLE_API_KEY
+      timeout: 15
+
+  correction:
+    default: ollama_local           # ollama_local | gemini_flash | claude | disabled
+    ollama_local:
+      model: phi3:mini
+      timeout: 30
+    gemini_flash:
+      model: gemini-2.0-flash
+      api_key: env:GOOGLE_API_KEY
+      timeout: 30
+    claude:
+      model: claude-sonnet-4-20250514
+      api_key: env:ANTHROPIC_API_KEY
+      timeout: 60
+
+  connections:
+    default: keyword                # keyword | disabled
+
+# Legacy LLM settings (still honored when providers are omitted)
 # llm:
-#   model: phi3:mini          # Ollama model for titles and tags
-#   enable_metis: true        # Enable smart tags, connections, serendipity
-#   title_timeout: 20         # Seconds to wait for title generation
-#   tag_timeout: 15           # Seconds to wait for tag suggestion
-#   content_threshold: 30     # Min chars before attempting LLM title
-#   whisper_model: base       # Whisper model size (tiny, base, small, medium, large)
+#   model: phi3:mini
+#   enable_metis: true
+#   title_timeout: 20
+#   tag_timeout: 15
+#   content_threshold: 30
+#   whisper_model: medium
+#   auto_correct: true
+#   correction_timeout: 30
 
 # Default note metadata
 # defaults:
-#   tags:                     # Base tags added to every capture
+#   tags:
 #     - "[[kernel]]"
 #     - "[[captured]]"
-#   author: ""                # Omitted from frontmatter when empty
+#   author: ""
 
 # Metis cultivation settings
 # metis:
-#   serendipity_age_days: 30  # Notes older than this are candidates
-#   max_connections: 3        # Max related notes to show
-#   max_keywords: 10          # Keywords extracted for connection search
+#   serendipity_age_days: 30
+#   max_connections: 3
+#   max_keywords: 10
 
 # UI settings
 # ui:
-#   max_recent: 5             # Recent destinations to remember
+#   max_recent: 5
