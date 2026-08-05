@@ -37,7 +37,7 @@ class OllamaTitleProvider:
     def warmup(self):
         try:
             return subprocess.Popen(
-                ["ollama", "run", self.cfg.get("model", "phi3:mini"), "hi"],
+                ["ollama", "run", self.cfg.get("model", "qwen-capable"), "hi"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
@@ -48,7 +48,7 @@ class OllamaTitleProvider:
         _wait_warmup(warmup)
         prompt = format_prompt("title", content=content[:1000])
         raw = _ollama_run(
-            self.cfg.get("model", "phi3:mini"),
+            self.cfg.get("model", "qwen-capable"),
             prompt,
             self.cfg.get("timeout", 20),
         )
@@ -68,7 +68,7 @@ class OllamaTagsProvider:
         _wait_warmup(warmup)
         prompt = format_prompt("tags", content=content[:500])
         raw = _ollama_run(
-            self.cfg.get("model", "phi3:mini"),
+            self.cfg.get("model", "qwen-capable"),
             prompt,
             self.cfg.get("timeout", 15),
         )

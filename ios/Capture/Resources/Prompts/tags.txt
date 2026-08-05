@@ -1,0 +1,8 @@
+Suggest exactly 3 tags for this note. Each tag should be 1-2 words. Return ONLY a comma-separated list on a single line. No hashtags, no explanation, no numbering.
+
+Example output: cryptography, surveillance, policy analysis
+
+Note content:
+{content}
+
+Tags:

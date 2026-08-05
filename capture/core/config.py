@@ -14,7 +14,7 @@ DEFAULTS = {
     "whisper_dictionary": None,
     "editor": "nano",
     "llm": {
-        "model": "phi3:mini",
+        "model": "qwen-capable",
         "enable_metis": True,
         "title_timeout": 20,
         "tag_timeout": 15,
@@ -66,7 +66,7 @@ MAC_PROVIDER_DEFAULTS = {
     "title": {
         "default": "ollama_local",
         "ollama_local": {
-            "model": "phi3:mini",
+            "model": "qwen-capable",
             "host": "http://localhost:11434",
             "timeout": 20,
         },
@@ -81,7 +81,7 @@ MAC_PROVIDER_DEFAULTS = {
     "tags": {
         "default": "ollama_local",
         "ollama_local": {
-            "model": "phi3:mini",
+            "model": "qwen-capable",
             "host": "http://localhost:11434",
             "timeout": 15,
         },
@@ -95,7 +95,7 @@ MAC_PROVIDER_DEFAULTS = {
     "correction": {
         "default": "ollama_local",
         "ollama_local": {
-            "model": "phi3:mini",
+            "model": "qwen-capable",
             "host": "http://localhost:11434",
             "timeout": 30,
         },
@@ -147,7 +147,7 @@ DEFAULT_CONFIG_TEMPLATE = """\
 
 # Legacy LLM settings (still honored; merged into providers when omitted)
 # llm:
-#   model: phi3:mini
+#   model: qwen-capable
 #   enable_metis: true
 #   title_timeout: 20
 #   tag_timeout: 15
@@ -216,7 +216,7 @@ def _apply_legacy_llm(config: dict) -> dict:
     llm = config.get("llm", {})
     providers = config.setdefault("providers", _deep_copy_dict(MAC_PROVIDER_DEFAULTS))
 
-    model = llm.get("model", "phi3:mini")
+    model = llm.get("model", "qwen-capable")
     for stage in ("title", "tags", "correction"):
         stage_cfg = providers.setdefault(stage, {})
         ollama = stage_cfg.setdefault("ollama_local", {})

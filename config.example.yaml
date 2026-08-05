@@ -36,7 +36,7 @@ providers:
   title:
     default: ollama_local           # ollama_local | gemini_flash | truncate | disabled
     ollama_local:
-      model: phi3:mini
+      model: qwen-capable
       timeout: 20
     gemini_flash:
       model: gemini-2.0-flash
@@ -46,7 +46,7 @@ providers:
   tags:
     default: ollama_local           # ollama_local | gemini_flash | disabled
     ollama_local:
-      model: phi3:mini
+      model: qwen-capable
       timeout: 15
     gemini_flash:
       model: gemini-2.0-flash
@@ -56,7 +56,7 @@ providers:
   correction:
     default: ollama_local           # ollama_local | gemini_flash | claude | disabled
     ollama_local:
-      model: phi3:mini
+      model: qwen-capable
       timeout: 30
     gemini_flash:
       model: gemini-2.0-flash
@@ -72,7 +72,7 @@ providers:
 
 # Legacy LLM settings (still honored when providers are omitted)
 # llm:
-#   model: phi3:mini
+#   model: qwen-capable
 #   enable_metis: true
 #   title_timeout: 20
 #   tag_timeout: 15

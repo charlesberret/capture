@@ -4,4 +4,6 @@ __pycache__/
 dist/
 build/
 .venv/
+ios/DerivedData/
+ios/build/
 .DS_Store

@@ -22,7 +22,7 @@ pip install -e .
 **Required:** Python 3.9+
 
 **Optional:**
-- [Ollama](https://ollama.com) + a model (e.g. `ollama pull qwen2.5:7b  # then: ollama create qwen-capable -f ~/cloud/sync/system/ollama/Modelfile.qwen-capable`) -- smart titles and tags
+- [Ollama](https://ollama.com) + a model (e.g. `ollama pull qwen2.5:7b  # then: ollama create qwen-capable -f ~/cloud/seafile/system/ollama/Modelfile.qwen-capable`) -- smart titles and tags
 - [Whisper](https://github.com/openai/whisper) -- voice transcription
 - [PyObjC](https://pyobjc.readthedocs.io/) -- Apple Vision OCR (macOS only)
 - [tesseract](https://github.com/tesseract-ocr/tesseract) -- OCR fallback

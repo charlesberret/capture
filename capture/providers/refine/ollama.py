@@ -22,7 +22,7 @@ class OllamaCorrectionProvider:
         )
         try:
             result = subprocess.run(
-                ["ollama", "run", self.cfg.get("model", "phi3:mini"), prompt],
+                ["ollama", "run", self.cfg.get("model", "qwen-capable"), prompt],
                 capture_output=True,
                 text=True,
                 timeout=self.cfg.get("timeout", 30),
