@@ -1,0 +1,29 @@
+name: Capture
+options:
+  bundleIdPrefix: net.berret
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    DEVELOPMENT_TEAM: ""
+targets:
+  Capture:
+    type: application
+    platform: iOS
+    sources:
+      - path: Capture/Sources
+        type: group
+      - path: Capture/Resources
+        buildPhase: resources
+      - path: Capture/Assets.xcassets
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: net.berret.capture
+      INFOPLIST_FILE: Capture/Supporting/Info.plist
+      CODE_SIGN_ENTITLEMENTS: Capture/Supporting/Capture.entitlements
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      GENERATE_INFOPLIST_FILE: false
+    entitlements:
+      path: Capture/Supporting/Capture.entitlements

@@ -1,0 +1,11 @@
+Generate a concise 3-8 word title for this note. Return ONLY the title on a single line. No quotes, no explanation, no preamble.
+
+Examples of good titles:
+- Cypherpunk Political Diversity Beyond Anarchism
+- Shannon Entropy and Cryptographic Key Length
+- Interview Notes from Hellman December 2021
+
+Note content:
+{content}
+
+Title:
