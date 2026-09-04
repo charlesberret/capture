@@ -22,12 +22,19 @@ def _ollama_run(model: str, prompt: str, timeout: int) -> str | None:
     return None
 
 
-def _wait_warmup(warmup_proc) -> None:
-    if warmup_proc:
-        try:
-            warmup_proc.wait(timeout=5)
-        except Exception:
-            warmup_proc.kill()
+def _wait_warmup(warmup_proc, timeout: int = 90) -> None:
+    """Wait for a background warmup to finish loading the model.
+
+    Never kill it on timeout: the warmup exists to get a multi-GB model
+    resident in the Ollama server, and killing it mid-load forfeits exactly
+    the work we were waiting on, so the real call pays the cold start again.
+    """
+    if not warmup_proc:
+        return
+    try:
+        warmup_proc.wait(timeout=timeout)
+    except Exception:
+        pass
 
 
 class OllamaTitleProvider:
@@ -75,4 +82,4 @@ class OllamaTagsProvider:
         if not raw:
             return []
         tags = [t.strip().strip("\"'") for t in raw.split(",")]
-        return [f"[[{tag}]]" for tag in tags if tag and len(tag) < 30]
+        return [tag for tag in tags if tag and len(tag) < 30]

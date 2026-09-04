@@ -54,4 +54,4 @@ class GeminiTagsProvider:
         if not raw:
             return []
         tags = [t.strip().strip("\"'") for t in raw.split(",")]
-        return [f"[[{tag}]]" for tag in tags if tag and len(tag) < 30]
+        return [tag for tag in tags if tag and len(tag) < 30]

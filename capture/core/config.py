@@ -16,16 +16,16 @@ DEFAULTS = {
     "llm": {
         "model": "qwen-capable",
         "enable_metis": True,
-        "title_timeout": 20,
-        "tag_timeout": 15,
+        "title_timeout": 60,
+        "tag_timeout": 45,
         "content_threshold": 30,
         "whisper_model": "medium",
         "whisper_backend": "python",
         "auto_correct": True,
-        "correction_timeout": 30,
+        "correction_timeout": 90,
     },
     "defaults": {
-        "tags": ["[[kernel]]", "[[captured]]"],
+        "tags": ["kernel", "captured"],
         "author": "",
     },
     "metis": {
@@ -68,7 +68,7 @@ MAC_PROVIDER_DEFAULTS = {
         "ollama_local": {
             "model": "qwen-capable",
             "host": "http://localhost:11434",
-            "timeout": 20,
+            "timeout": 60,
         },
         "gemini_flash": {
             "model": "gemini-2.0-flash",
@@ -83,7 +83,7 @@ MAC_PROVIDER_DEFAULTS = {
         "ollama_local": {
             "model": "qwen-capable",
             "host": "http://localhost:11434",
-            "timeout": 15,
+            "timeout": 45,
         },
         "gemini_flash": {
             "model": "gemini-2.0-flash",
@@ -97,7 +97,7 @@ MAC_PROVIDER_DEFAULTS = {
         "ollama_local": {
             "model": "qwen-capable",
             "host": "http://localhost:11434",
-            "timeout": 30,
+            "timeout": 90,
         },
         "gemini_flash": {
             "model": "gemini-2.0-flash",
@@ -158,8 +158,8 @@ DEFAULT_CONFIG_TEMPLATE = """\
 # Default note metadata
 # defaults:
 #   tags:
-#     - "[[kernel]]"
-#     - "[[captured]]"
+#     - kernel
+#     - captured
 #   author: ""
 
 # Metis cultivation settings
@@ -225,11 +225,11 @@ def _apply_legacy_llm(config: dict) -> dict:
         timeout_key = "timeout"
         llm_timeout = llm.get(f"{stage.replace('correction', 'correction')}_timeout")
         if stage == "title":
-            llm_timeout = llm.get("title_timeout", 20)
+            llm_timeout = llm.get("title_timeout", 60)
         elif stage == "tags":
-            llm_timeout = llm.get("tag_timeout", 15)
+            llm_timeout = llm.get("tag_timeout", 45)
         elif stage == "correction":
-            llm_timeout = llm.get("correction_timeout", 30)
+            llm_timeout = llm.get("correction_timeout", 90)
         if llm_timeout is not None:
             ollama["timeout"] = llm_timeout
 

@@ -84,8 +84,8 @@ providers:
 # Default note metadata
 # defaults:
 #   tags:
-#     - "[[kernel]]"
-#     - "[[captured]]"
+#     - kernel
+#     - captured
 #   author: ""
 
 # Metis cultivation settings

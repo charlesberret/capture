@@ -22,6 +22,51 @@ def slugify(text: str, max_len: int = 50) -> str:
     return slug.strip(" .")
 
 
+def normalize_tag(tag: str) -> str | None:
+    """Reduce a tag to the bare form used in the notes frontmatter contract.
+
+    Accepts legacy ``[[wikilink]]`` and ``llm:model`` spellings (both of which
+    the 2026 bracket-fix pass migrated away from) and returns ``kernel`` /
+    ``llm/qwen``. Characters that would break a YAML flow sequence are dropped.
+    """
+    if not tag:
+        return None
+    tag = tag.strip()
+    while tag.startswith("[[") and tag.endswith("]]"):
+        tag = tag[2:-2].strip()
+    tag = tag.replace(":", "/")
+    for char in ("[", "]", ",", "{", "}", "#", "&", "*", '"', "'", "\n"):
+        tag = tag.replace(char, "")
+    tag = " ".join(tag.split())
+    return tag or None
+
+
+def yaml_scalar(value: str) -> str:
+    """Quote a frontmatter scalar when bare YAML would misparse it."""
+    text = str(value).strip()
+    if not text:
+        return '""'
+    needs_quote = (
+        text[0] in "[]{}>|*&!%@`#-?:,'\""
+        or ": " in text
+        or text.endswith(":")
+        or text.lower() in ("true", "false", "null", "yes", "no", "on", "off", "~")
+    )
+    if needs_quote:
+        return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return text
+
+
+def format_tags(tags: list[str]) -> str:
+    """Serialise tags as a YAML flow sequence: ``[kernel, captured]``."""
+    seen: list[str] = []
+    for raw in tags:
+        tag = normalize_tag(raw)
+        if tag and tag not in seen:
+            seen.append(tag)
+    return "[" + ", ".join(seen) + "]"
+
+
 def generate_title(content: str, warmup=None) -> str:
     """Generate title via configured provider, with truncate fallback."""
     from capture.core.config import content_threshold
@@ -41,14 +86,14 @@ def suggest_tags(content: str, warmup=None) -> list[str]:
     return provider.suggest(content, warmup=warmup)
 
 
-def find_connections(content: str) -> list[str]:
+def find_connections(content: str, exclude: Path | None = None) -> list[str]:
     if not metis_enabled():
         return []
     provider = get_provider("connections")
     notes_dir = state.NOTES_DIR
     if notes_dir is None:
         return []
-    return provider.find(content, notes_dir=notes_dir)
+    return provider.find(content, notes_dir=notes_dir, exclude=exclude)
 
 
 def surface_serendipity() -> str | None:
@@ -79,7 +124,13 @@ def surface_serendipity() -> str | None:
 
         try:
             text = selected.read_text()
-            lines = [l for l in text.split("\n") if l.strip() and not l.startswith("---")]
+            # Skip the frontmatter block outright — previewing "kind: atom"
+            # tells you nothing about the note.
+            if text.startswith("---"):
+                parts = text.split("---", 2)
+                if len(parts) >= 3:
+                    text = parts[2]
+            lines = [l for l in text.split("\n") if l.strip()]
             preview = lines[0][:100] if lines else ""
             return f"💡 Serendipity: {title}\n   {preview}..."
         except OSError:
@@ -112,11 +163,12 @@ def create_note(content: str, title: str | None = None, warmup=None) -> Path:
         if suggested:
             base_tags.extend(suggested)
 
-    tags_str = ", ".join(base_tags)
+    tags_str = format_tags(base_tags)
     author = cfg()["defaults"]["author"]
-    author_line = f"\nauthor: {author}" if author else ""
+    author_line = f"\nauthor: {yaml_scalar(author)}" if author else ""
+    title_value = yaml_scalar(slug if slug else "Untitled capture")
     note_content = f"""---
-title: {slug if slug else 'Untitled capture'}{author_line}
+title: {title_value}{author_line}
 date: {datetime.now().strftime("%Y-%m-%d %H:%M")}
 tags: {tags_str}
 ---
@@ -128,7 +180,7 @@ tags: {tags_str}
     print(f"✓ Created: {filepath.name}")
 
     if metis_enabled():
-        connections = find_connections(content)
+        connections = find_connections(content, exclude=filepath)
         if connections:
             print(f"  🔗 Related: {', '.join(connections)}")
         serendipity = surface_serendipity()
@@ -145,8 +197,8 @@ def _model_tag_for_note() -> str | None:
         if name == "ollama_local":
             model = config["providers"][stage]["ollama_local"].get("model", "")
             if model:
-                return f"[[llm:{model.split(':')[0]}]]"
+                return f"llm/{model.split(':')[0]}"
         elif name == "gemini_flash":
             model = config["providers"][stage]["gemini_flash"].get("model", "gemini")
-            return f"[[llm:{model.split('-')[0]}]]"
+            return f"llm/{model.split('-')[0]}"
     return None

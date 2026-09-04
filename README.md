@@ -7,15 +7,18 @@ Captures ideas as timestamped markdown notes from text, voice, images, PDFs, or 
 ## Install
 
 ```bash
-# Option 1: symlink (simplest)
-ln -s /path/to/capture/capture ~/.local/bin/capture
-
-# Option 2: pipx
+# Option 1: pipx (recommended)
 pipx install .
 
-# Option 3: pip editable
-pip install -e .
+# Option 2: pip editable, into a venv
+python3 -m venv .venv && .venv/bin/pip install -e '.[all]'
+
+# Option 3: symlink the installed entry point onto your PATH
+ln -s "$PWD/.venv/bin/capture" ~/.local/bin/capture
 ```
+
+Note that `capture/` is the Python package, not a runnable script — symlink the
+generated `bin/capture` entry point, never `capture/capture`.
 
 ### Dependencies
 
@@ -114,8 +117,8 @@ providers:
 
 defaults:
   tags:
-    - "[[kernel]]"
-    - "[[captured]]"
+    - kernel
+    - captured
 
 metis:
   serendipity_age_days: 30
@@ -124,6 +127,24 @@ metis:
 ```
 
 ## Features
+
+### Note format
+
+Notes land at the root of the notes directory as `YYYYMMDDHHMM - Title.md`, with
+frontmatter that is valid YAML:
+
+```yaml
+---
+title: Cypherpunk Mailing List as Unauthorized Workshop
+author: Charles Berret
+date: 2026-09-04 14:51
+tags: [kernel, captured, llm/qwen-capable, cypherpunks, tools]
+---
+```
+
+Tags are a YAML flow sequence — **not** `[[wikilinks]]`. Capture deliberately
+does not stamp the `kind` / `subject` / `status` / `source` contract; a separate
+classification pass owns those fields.
 
 ### Smart titles
 Uses Ollama to generate concise 3-8 word titles. Falls back to first-line truncation for short content or when Ollama is unavailable.
@@ -150,14 +171,14 @@ corrections:
 
 Point to it with `whisper_dictionary` in config, or place `whisper-dictionary.yaml` next to your notes directory.
 
-### Ollama model benchmarks
+### Ollama model
 
-| Model | Size | Speed | Quality |
-|-------|------|-------|---------|
-| **phi3:mini** | 1.9GB | 2-4s | Excellent titles, rich tags |
-| gemma2:2b | 1.6GB | 1.6-2s | Concise titles, fewer tags |
-| llama3.2:1b | 1.3GB | 40s | Frequent timeouts |
-| llama3.1:latest | 4.9GB | 20s+ | Too slow |
+Default is `qwen-capable` (~4.7 GB). On an M3 Pro a title takes ~4-5s once the
+model is resident, so the stage timeouts (60s title / 45s tags) are sized for a
+cold load rather than a warm one.
+
+Any Ollama model works — set `providers.title.ollama_local.model`, or
+`OLLAMA_MODEL` in the environment to override every stage at once.
 
 The tool warms up Ollama in the background while you type, so the model is ready when needed.
 
@@ -240,6 +261,16 @@ iOS:
               Whisper (voice transcription)
               Ollama (title generation, tagging)
 ```
+
+## Tests
+
+```bash
+.venv/bin/pytest tests/ -q
+```
+
+`tests/test_note_contract.py` pins the frontmatter contract — tags as a YAML
+flow sequence, scalars quoted when they would otherwise misparse. Run it before
+touching anything that writes a note.
 
 ## License
 

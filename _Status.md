@@ -4,21 +4,49 @@ kind: software
 phase: active
 canonical: ~/cloud/git-projects/capture
 deps: pip
-test_cmd: none
-test_signal: none
+test_cmd: .venv/bin/pytest tests/ -q
+test_signal: 20 passed
 healthbeacon: none
 ---
 
 ## Status
 
-Quick multi-modal note capture CLI — text, voice, images, PDFs, and an iOS staging folder — producing timestamped markdown notes with LLM-generated titles and tags (Ollama-backed, optional). Refactored 2026-07-09 from a single script into a package with per-feature model providers; a topic-keyed whisper dictionary and upgraded default model landed 2026-07-06. The working tree carries an uncommitted `ios/` component plus README and .gitignore edits from that refactor.
+Quick multi-modal note capture CLI — text, voice, images, PDFs, and an iOS staging
+folder — producing timestamped markdown notes with LLM-generated titles and tags.
+Refactored 2026-07-09 into a package with per-feature model providers; the iOS
+SwiftUI app landed in the same pass.
+
+Revived 2026-09-04 after months dormant. It had been unrunnable: the `bin/capture`
+symlink on PATH was dangling (pointed at the pre-move `code/active/` path), and
+`~/.config/capture/config.yaml` aimed `notes_dir` at an iCloud folder that no longer
+exists. Both repointed at canonical paths (`~/cloud/sync/notes`). whisper + pyobjc
+installed into `.venv`, so voice and Apple Vision OCR work again.
+
+Same pass fixed the note contract: capture was emitting `tags: [[kernel]], [[captured]]`
+— invalid YAML, and the exact format a 211-note migration (`notes/_review/tags-bracket-fix-ledger.csv`)
+had been run to undo. It now writes `tags: [kernel, captured, llm/qwen]`, pinned by
+`tests/test_note_contract.py`. `~/cloud/sync/code/bin/capture-reprocess` had the same
+bug plus a parser that read migrated notes as untagged — it would have re-bracketed
+all 211. Fixed too.
+
+Also fixed: the Ollama warmup killed the model load it had started after 5s, so every
+capture paid a cold start and blew the 20s title timeout, silently falling back to a
+truncated title. A capture went 40s → 4.8s and now gets a real LLM title. And the
+keyword connection finder matched each new note against itself, since `create_note`
+writes the file before searching.
 
 ## Next action
 
-- [ ] Commit or discard the uncommitted `ios/` directory and the README/.gitignore edits left over from the provider refactor
+- [ ] Decide whether capture should file into the staging folder or keep writing
+      straight to the notes root (`notes-process` classifies either way)
 
 ## Known gaps
 
-- No test suite — nothing verifies the CLI or the provider plumbing
-- Deps declared in `pyproject.toml` only; no `requirements.txt`/lock, so dep-freshness reads blind
+- Test suite covers the note contract only — config precedence, provider resolution,
+  and the `process` folder walk are still untested
 - No healthbeacon
+- Deps declared in `pyproject.toml` only; no lock, so dep-freshness reads blind
+- `notes/coursework/202601170656 - tibetan.md` holds a second frontmatter block inside
+  its body (merge artifact, legacy bracket tags); top-level frontmatter is valid —
+  flagged, not touched
+- `ios/Capture.xcodeproj` is xcodegen-generated but tracked in git

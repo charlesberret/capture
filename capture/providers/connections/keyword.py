@@ -10,7 +10,7 @@ class KeywordConnectionsProvider:
         self.cfg = provider_cfg
         self.config = config
 
-    def find(self, content: str, *, notes_dir: Path) -> list[str]:
+    def find(self, content: str, *, notes_dir: Path, exclude: Path | None = None) -> list[str]:
         words = content.lower().split()
         keywords = [w for w in words if len(w) > 5][: self.config["metis"]["max_keywords"]]
         if not keywords:
@@ -20,6 +20,8 @@ class KeywordConnectionsProvider:
         try:
             for note_file in notes_dir.glob("*.md"):
                 if note_file.name.startswith("_"):
+                    continue
+                if exclude is not None and note_file == exclude:
                     continue
                 try:
                     note_content = note_file.read_text().lower()
