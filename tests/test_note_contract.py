@@ -132,3 +132,10 @@ def test_clean_model_output_strips_spinner_noise():
 def test_frontmatter_survives_a_tag_full_of_escapes():
     line = f"tags: {format_tags(['kernel', 'publication mo\x1b[2D\x1b[K', 'ok'])}"
     assert yaml.safe_load(line)["tags"] == ["kernel", "publication mo", "ok"]
+
+
+def test_model_title_with_a_colon_does_not_break_the_block():
+    """A real 2026-09-05 corruption: `title: Artificial Metis: Beyond the Turing Test`."""
+    title = "Artificial Metis: Beyond the Turing Test"
+    block = f"title: {yaml_scalar(title)}\ntags: {format_tags(['kernel'])}"
+    assert yaml.safe_load(block) == {"title": title, "tags": ["kernel"]}

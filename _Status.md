@@ -5,7 +5,7 @@ phase: active
 canonical: ~/cloud/git-projects/capture
 deps: pip
 test_cmd: .venv/bin/pytest tests/ -q
-test_signal: 20 passed
+test_signal: 24 passed
 healthbeacon: none
 ---
 
@@ -34,6 +34,25 @@ capture paid a cold start and blew the 20s title timeout, silently falling back 
 truncated title. A capture went 40s → 4.8s and now gets a real LLM title. And the
 keyword connection finder matched each new note against itself, since `create_note`
 writes the file before searching.
+
+A 2026-09-05 reprocess pass over the notes root surfaced two more bugs in
+`capture-reprocess`, both now fixed: `ollama run` leaks ANSI escapes into
+captured stdout (one note's frontmatter was corrupted and restored from backup),
+and the frontmatter updater only *replaced* `title:`/`tags:` lines, never
+inserted them — so notes carrying only kind/subject/status/source were rewritten
+unchanged after burning two LLM calls each. The sanitiser now lives in
+`capture/core/text.py`, shared by the note writer and the ollama providers.
+
+A third bug surfaced on the re-run: the script wrote `title: {model_output}`
+unquoted, so a generated title containing a colon ("Artificial Metis: Beyond the
+Turing Test") broke the block. Three notes were corrupted this way and repaired
+in place. capture-reprocess now quotes scalars and, as a backstop, parses the
+frontmatter it just built and refuses to write anything that does not load. Its
+shebang moved to the fleet interpreter (`~/.venvs/fleet/bin/python3`), which has
+PyYAML; system python3 does not.
+
+Root notes backed up to `notes/_review/backup-root-notes-2026-09-05/` before the
+pass.
 
 ## Next action
 
