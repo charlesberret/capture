@@ -7,6 +7,7 @@ from pathlib import Path
 
 from capture.core import state
 from capture.core.config import cfg, metis_enabled
+from capture.core.text import strip_ansi, strip_control
 from capture.providers.registry import get_provider
 
 
@@ -35,7 +36,10 @@ def normalize_tag(tag: str) -> str | None:
     while tag.startswith("[[") and tag.endswith("]]"):
         tag = tag[2:-2].strip()
     tag = tag.replace(":", "/")
-    for char in ("[", "]", ",", "{", "}", "#", "&", "*", '"', "'", "\n"):
+    # Escape sequences first, then any control bytes left over: dropping the
+    # ESC alone would leave its "[2D" payload behind as literal text.
+    tag = strip_control(strip_ansi(tag), keep_newlines=False)
+    for char in ("[", "]", ",", "{", "}", "#", "&", "*", '"', "'"):
         tag = tag.replace(char, "")
     tag = " ".join(tag.split())
     return tag or None

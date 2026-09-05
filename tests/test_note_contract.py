@@ -113,3 +113,22 @@ def test_connections_never_match_the_note_just_written(notes_dir, monkeypatch):
         exclude=written,
     )
     assert written.stem.split(" - ", 1)[-1] not in found
+
+
+# --- model output sanitising -------------------------------------------
+
+def test_normalize_tag_drops_ansi_escapes():
+    """A stray escape from `ollama run` made one real note unparseable."""
+    assert normalize_tag("publication mo\x1b[2D\x1b[K") == "publication mo"
+
+
+def test_clean_model_output_strips_spinner_noise():
+    from capture.core.text import clean_model_output
+
+    assert clean_model_output("\x1b[?25l⠙ \x1b[K\x1b[?25hA Real Title") == "⠙ A Real Title"
+    assert "\x1b" not in clean_model_output("a\x1b[2Db")
+
+
+def test_frontmatter_survives_a_tag_full_of_escapes():
+    line = f"tags: {format_tags(['kernel', 'publication mo\x1b[2D\x1b[K', 'ok'])}"
+    assert yaml.safe_load(line)["tags"] == ["kernel", "publication mo", "ok"]

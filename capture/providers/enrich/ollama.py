@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 
 from capture.core.prompts_loader import format_prompt
+from capture.core.text import clean_model_output
 
 
 def _ollama_run(model: str, prompt: str, timeout: int) -> str | None:
@@ -16,7 +17,7 @@ def _ollama_run(model: str, prompt: str, timeout: int) -> str | None:
             timeout=timeout,
         )
         if result.returncode == 0:
-            return result.stdout.strip()
+            return clean_model_output(result.stdout)
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
     return None

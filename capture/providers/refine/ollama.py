@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 
 from capture.core.prompts_loader import format_prompt
+from capture.core.text import clean_model_output
 
 
 class OllamaCorrectionProvider:
@@ -28,7 +29,7 @@ class OllamaCorrectionProvider:
                 timeout=self.cfg.get("timeout", 30),
             )
             if result.returncode == 0:
-                corrected = result.stdout.strip()
+                corrected = clean_model_output(result.stdout)
                 if corrected and 0.5 < len(corrected) / max(len(text), 1) < 2.0:
                     return corrected
         except (subprocess.TimeoutExpired, FileNotFoundError):
