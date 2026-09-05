@@ -51,8 +51,18 @@ frontmatter it just built and refuses to write anything that does not load. Its
 shebang moved to the fleet interpreter (`~/.venvs/fleet/bin/python3`), which has
 PyYAML; system python3 does not.
 
-Root notes backed up to `notes/_review/backup-root-notes-2026-09-05/` before the
-pass.
+Two further problems were content-level rather than syntactic. The script titled
+from an *empty* body and got a confabulation — an empty note's human title
+"Drake-Seti-Bateson" became "Avicenna's M3 Pro Configuration", the machine's own
+hostname; there is now a `MIN_BODY_CHARS` guard. And `is_generic_title()` treated
+any title under 20 characters as machine-generated, so "Ode to Hesse" and "Tools
+to Think With" were replaced with flatter LLM titles. Length is not the signal:
+the rule now tests whether the title is a prefix of the body, which is what
+first-line truncation actually looks like. All three titles restored.
+
+Final state: 88 root notes, 0 unparseable, 0 bodies altered, 0 human titles
+overwritten, 81 enhanced. Root notes backed up to
+`notes/_review/backup-root-notes-2026-09-05/` before the pass.
 
 ## Next action
 
