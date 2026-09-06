@@ -5,7 +5,7 @@ phase: active
 canonical: ~/cloud/git-projects/capture
 deps: pip
 test_cmd: .venv/bin/pytest tests/ -q
-test_signal: 24 passed
+test_signal: 37 passed
 healthbeacon: none
 ---
 
@@ -64,10 +64,21 @@ Final state: 88 root notes, 0 unparseable, 0 bodies altered, 0 human titles
 overwritten, 81 enhanced. Root notes backed up to
 `notes/_review/backup-root-notes-2026-09-05/` before the pass.
 
+Added 2026-09-06: `capture fragments` — scans the notes root for bodies under
+200 chars and files expansion items on a new Kettle desk at
+`~/cloud/sync/notes/.kettle/`. Grew directly out of the reprocess pass: a note
+too short to title honestly is also too short to be useful, and flagging it beats
+confabulating metadata for it. Queue-only by design; notes are never modified. A
+dismissal is recorded on the desk and survives every rescan, which is what makes
+a length heuristic tolerable — the bar cannot distinguish a seed from a terse but
+finished claim.
+
 ## Next action
 
 - [ ] Decide whether capture should file into the staging folder or keep writing
       straight to the notes root (`notes-process` classifies either way)
+- [ ] Work the 21 fragment items on `notes/.kettle/` — decide the real bar by
+      dismissing the ones that are finished as written
 
 ## Known gaps
 

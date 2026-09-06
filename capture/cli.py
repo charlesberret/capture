@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from capture.core import state
+from capture.core.fragments import DEFAULT_THRESHOLD
 from capture.core.config import DEFAULT_CONFIG_TEMPLATE, load_config, set_config
 from capture.core.pipeline import (
     capture_photo,
@@ -57,6 +58,40 @@ def interactive_menu() -> None:
         print("Unknown option")
 
 
+def run_fragments(threshold: int | None = None, write: bool = False) -> None:
+    from capture.core import fragments as frag
+
+    threshold = threshold or frag.DEFAULT_THRESHOLD
+    notes_dir = state.NOTES_DIR
+    found = frag.scan(notes_dir, threshold=threshold)
+
+    if not found:
+        print(f"No fragments under {threshold} chars in {shorten_path(notes_dir)}")
+        return
+
+    print(f"\n{len(found)} fragment{'s' if len(found) != 1 else ''} "
+          f"under {threshold} chars in {shorten_path(notes_dir)}:\n")
+    for f in found:
+        mark = "EMPTY" if f.is_empty else f"{f.chars:4}c/{f.words:3}w"
+        print(f"  [{mark}] {f.title[:58]}")
+
+    path = frag.desk_path(notes_dir)
+    result = frag.reconcile(frag.load_queue(path), found, notes_dir, threshold)
+
+    print(f"\nDesk: {shorten_path(path)}")
+    print(f"  new items to file : {len(result['added'])}")
+    print(f"  already settled   : {len(result['skipped'])} (left alone)")
+    print(f"  now resolved      : {len(result['resolved'])} (note grew past the bar)")
+
+    if not write:
+        print("\nReport only — pass --write to file them.")
+        return
+
+    frag.write_queue(path, result["queue"])
+    print(f"\n\u2713 Filed {len(result['added'])} item"
+          f"{'s' if len(result['added']) != 1 else ''} on the desk")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Quick idea capture tool")
     parser.add_argument("--dest", "-d", type=str, help="Destination directory (default: Notes/)")
@@ -89,6 +124,20 @@ def main() -> None:
     )
     voice_parser.add_argument(
         "--no-correct", action="store_true", help="Skip post-transcription correction pass"
+    )
+
+    fragments_parser = subparsers.add_parser(
+        "fragments", help="Find notes too short to be useful and file them on the Kettle desk"
+    )
+    fragments_parser.add_argument("--dest", "-d", type=str, help=argparse.SUPPRESS)
+    fragments_parser.add_argument(
+        "--threshold", type=int, default=None, metavar="CHARS",
+        help=f"Body length below which a note counts as a fragment "
+             f"(default: {DEFAULT_THRESHOLD})",
+    )
+    fragments_parser.add_argument(
+        "--write", action="store_true",
+        help="File the entries on the desk (default: report only)",
     )
 
     process_parser = subparsers.add_parser("process", help="Process _Capture folder")
@@ -150,6 +199,8 @@ def main() -> None:
             capture_voice_multi(topic=topic, correct=correct)
         else:
             capture_voice(topic=topic, correct=correct)
+    elif args.command == "fragments":
+        run_fragments(threshold=args.threshold, write=args.write)
     elif args.command == "process":
         topic = getattr(args, "topic", "general")
         correct = not getattr(args, "no_correct", False)

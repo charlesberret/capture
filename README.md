@@ -45,6 +45,7 @@ capture photo image.jpg    # OCR from image
 capture voice              # Record and transcribe
 capture voice --multi      # Record multiple notes with pipelined transcription
 capture process            # Process staging folder (from iOS Shortcuts)
+capture fragments          # Find notes too short to be useful yet
 ```
 
 ### Options
@@ -148,6 +149,29 @@ classification pass owns those fields.
 
 ### Smart titles
 Uses Ollama to generate concise 3-8 word titles. Falls back to first-line truncation for short content or when Ollama is unavailable.
+
+### Fragments
+
+A captured thought often lands as a few words — enough to remember, not enough
+to work from. `capture fragments` scans the notes root for bodies under 200
+characters and files an expansion item per fragment on the tree's Kettle desk
+(`.kettle/runtime/queue.json`), so a sweep can prompt you to grow them.
+
+```bash
+capture fragments               # report only (default)
+capture fragments --write       # file the entries
+capture fragments --threshold 280 --write
+```
+
+Notes are never modified — the frontmatter contract belongs to `notes-process`,
+and being a fragment is a fact *about* a note, not a property of it. That means
+a dismissal lives on the desk: mark an entry `dismissed` and it is never re-filed,
+however many times you rescan. This matters because length alone cannot tell a
+seed from a complete-but-terse claim, so some entries are meant to be dismissed.
+
+An empty note gets a different ask — write it or delete it — and is explicitly
+flagged as something not to hand a model, since with nothing to read it will
+invent something plausible.
 
 ### Metis cultivation
 - **Auto-tags**: LLM-suggested tags added alongside base tags
