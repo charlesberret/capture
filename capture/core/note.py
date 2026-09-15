@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -112,13 +113,14 @@ def create_note(content: str, title: str | None = None, warmup=None) -> Path:
         if suggested:
             base_tags.extend(suggested)
 
-    tags_str = ", ".join(base_tags)
     author = cfg()["defaults"]["author"]
-    author_line = f"\nauthor: {author}" if author else ""
+    author_line = f"\nauthor: {json.dumps(author)}" if author else ""
+    note_title = slug if slug else "Untitled capture"
+    note_date = datetime.now().strftime("%Y-%m-%d %H:%M")
     note_content = f"""---
-title: {slug if slug else 'Untitled capture'}{author_line}
-date: {datetime.now().strftime("%Y-%m-%d %H:%M")}
-tags: {tags_str}
+title: {json.dumps(note_title)}{author_line}
+date: {json.dumps(note_date)}
+tags: {json.dumps(base_tags)}
 ---
 
 {content}
