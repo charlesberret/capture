@@ -16,6 +16,10 @@ dependencies = []
 
 [project.optional-dependencies]
 yaml = ["pyyaml"]
+test = [
+    "pytest",
+    "pyyaml",
+]
 ocr = [
     "pyobjc-core",
     "pyobjc-framework-Vision",
@@ -35,3 +39,6 @@ capture = [
     "core/prompts/*.txt",
     "platforms/*.yaml",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
