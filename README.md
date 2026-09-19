@@ -2,7 +2,18 @@
 
 Quick multi-modal note capture with LLM-powered titles and tags.
 
-Captures ideas as timestamped markdown notes from text, voice, images, PDFs, or an iOS staging folder. Uses [Ollama](https://ollama.com) for smart title generation, auto-tagging, and serendipitous note connections.
+Two surfaces, one note shape:
+
+- **Mac CLI** — `capture quick "idea"` (text, editor, voice, photo) writes
+  timestamped markdown notes with YAML frontmatter.
+- **Native iOS app** (`ios/`) — the phone path: photograph a page, **see the
+  OCR**, **highlight the span** that matters, the agent proposes title + tags,
+  **you confirm** (edit allowed) and may add a short memo — only then is the
+  same `.md` note written. Nothing auto-saves.
+
+An older iOS-Shortcuts staging flow still works but is **legacy** (see
+[iOS Shortcuts (legacy)](#ios-shortcuts-legacy)); the native app is the
+product path.
 
 ## Install
 
@@ -25,7 +36,7 @@ generated `bin/capture` entry point, never `capture/capture`.
 **Required:** Python 3.9+
 
 **Optional:**
-- [Ollama](https://ollama.com) + a model (e.g. `ollama pull qwen2.5:7b  # then: ollama create qwen-capable -f ~/cloud/sync/system/ollama/Modelfile.qwen-capable`) -- smart titles and tags
+- [Ollama](https://ollama.com) + a model (e.g. `ollama pull qwen2.5:7b`; set any custom model with `OLLAMA_MODEL`) -- smart titles and tags
 - [Whisper](https://github.com/openai/whisper) -- voice transcription
 - [PyObjC](https://pyobjc.readthedocs.io/) -- Apple Vision OCR (macOS only)
 - [tesseract](https://github.com/tesseract-ocr/tesseract) -- OCR fallback
@@ -44,7 +55,7 @@ capture text               # Open editor for longer text
 capture photo image.jpg    # OCR from image
 capture voice              # Record and transcribe
 capture voice --multi      # Record multiple notes with pipelined transcription
-capture process            # Process staging folder (from iOS Shortcuts)
+capture process            # Legacy: process the iOS-Shortcuts staging folder
 capture fragments          # Find notes too short to be useful yet
 ```
 
@@ -70,8 +81,8 @@ Or copy `config.example.yaml` to `~/.config/capture/config.yaml` and edit.
 
 Each pipeline stage picks its own backend — local models, cloud APIs, or `disabled`:
 
-| Stage | Mac default | iOS default (future) |
-|-------|-------------|----------------------|
+| Stage | Mac default | iOS default (native app) |
+|-------|-------------|---------------------------|
 | `transcription` | `whisper_local` | `gemini_flash` |
 | `ocr` | `apple_vision` | `apple_vision` |
 | `title` | `ollama_local` | `gemini_flash` |
@@ -88,6 +99,8 @@ Available backends per stage:
 - **correction:** `ollama_local`, `gemini_flash`, `claude`, `disabled`
 
 API keys use `env:VAR_NAME` in config (e.g. `api_key: env:GOOGLE_API_KEY`).
+The CLI never needs one: with every stage `disabled` it still writes correct
+notes (see `tests/test_capture_floor.py`).
 
 The legacy `llm:` config block is still honored and merged into provider settings.
 
@@ -103,7 +116,7 @@ See `config.example.yaml` for the full provider schema. Minimal example:
 
 ```yaml
 notes_dir: ~/Notes
-capture_dir: ~/Notes/_capture-staging
+capture_dir: ~/Notes/_capture-staging   # legacy: iOS-Shortcuts staging folder
 
 providers:
   transcription:
@@ -181,7 +194,8 @@ invent something plausible.
 Disable with `export CAPTURE_METIS=false` or set `llm.enable_metis: false` in config.
 
 ### Whisper dictionary
-Custom vocabulary and post-processing corrections for voice transcription. Create a YAML file:
+Custom vocabulary and post-processing corrections for voice transcription. Create
+a YAML file:
 
 ```yaml
 prompt_vocab:
@@ -197,18 +211,29 @@ Point to it with `whisper_dictionary` in config, or place `whisper-dictionary.ya
 
 ### Ollama model
 
-Default is `qwen-capable` (~4.7 GB). On an M3 Pro a title takes ~4-5s once the
-model is resident, so the stage timeouts (60s title / 45s tags) are sized for a
-cold load rather than a warm one.
+The default model name is `qwen-capable`; any Ollama model works — override
+with `providers.title.ollama_local.model`, or `OLLAMA_MODEL` in the
+environment to override every stage at once. On an M3 Pro a title takes
+~4-5s once the model is resident, so the stage timeouts (60s title / 45s
+tags) are sized for a cold load rather than a warm one. The tool warms up
+Ollama in the background while you type, so the model is ready when needed.
 
-Any Ollama model works — set `providers.title.ollama_local.model`, or
-`OLLAMA_MODEL` in the environment to override every stage at once.
+## iOS app (the phone path)
 
-The tool warms up Ollama in the background while you type, so the model is ready when needed.
+A native SwiftUI app lives in `ios/`. It writes the same `.md` notes directly
+to your Notes folder (e.g. iCloud Drive/Notes) — no staging step.
 
-## iOS App
+The photo loop is **highlight-confirm-memo** — the agent never writes behind
+your back:
 
-A native SwiftUI app lives in `ios/`. It writes the same `.md` notes directly to your iCloud Notes folder — no staging step required.
+1. **Photograph** a print or handwritten page (camera or VisionKit scanner).
+2. **See the OCR** — Apple Vision text is shown to you, not silently stored.
+3. **Highlight** the span that becomes the note body. Saving without a
+   selection is refused.
+4. The **agent proposes title + tags**; you confirm (edit allowed) and may add
+   a short memo, which appends to the body.
+5. **Then** the note is written, in the same `YYYYMMDDHHMM - Title.md` shape
+   the CLI writes.
 
 ```bash
 cd ios && xcodegen generate && open Capture.xcodeproj
@@ -221,11 +246,16 @@ See [ios/README.md](ios/README.md) for setup (folder picker, Gemini API key in K
 | Transcription | Gemini Flash | Whisper |
 | Title / tags | Gemini Flash | Ollama |
 | OCR | Apple Vision | Apple Vision |
-| Correction | disabled (v1) | Ollama / Claude |
+| Correction | disabled | Ollama / Claude |
+| Auto-save | never — human confirms | n/a (you invoked it) |
 
 ## iOS Shortcuts (legacy)
 
-Create iOS Shortcuts that save to the staging folder, then process with `capture process`.
+**Legacy path, superseded by the native app above.** Still works; kept for
+existing installs. Nothing new should be built on it.
+
+Create iOS Shortcuts that save to the staging folder, then process with
+`capture process`:
 
 ### Capture Text
 1. **Ask for Input** (Question: "What's your idea?", Type: Text)
@@ -239,7 +269,7 @@ Create iOS Shortcuts that save to the staging folder, then process with `capture
 1. **Scan Document** (uses VisionKit scanner with edge detection)
 2. **Save File** to `iCloud Drive/Notes/_capture-staging/Scan-[Current Date].pdf`
 
-### Processing
+### Processing (legacy)
 
 ```bash
 capture process
@@ -268,23 +298,26 @@ capture/
 └── platforms/
     ├── mac.defaults.yaml
     └── ios.defaults.yaml
+ios/                       # Native SwiftUI app (the phone path)
+tests/                     # pytest; offline by construction
 ```
 
 ## How it works
 
 ```
-CLI:  capture quick/text/voice/photo  ──▶  ~/Notes/ (timestamped .md)
+Mac CLI:  capture quick/text/voice/photo  ──▶  ~/Notes/  (timestamped .md)
 
-iOS:
-┌─────────────┐     ┌──────────────────┐     ┌──────────────┐
-│ iPhone      │     │ _capture-staging/ │     │ ~/Notes/     │
-│ Shortcuts   │ ──▶ │ (iCloud sync)    │ ──▶ │ Kernel notes │
-└─────────────┘     └──────────────────┘     └──────────────┘
-                          │
-              Apple Vision OCR (images, PDFs)
-              Whisper (voice transcription)
-              Ollama (title generation, tagging)
+iOS (native app — the phone path):
+┌──────────────┐   camera → OCR shown → highlight →   ┌─────────────┐
+│ iPhone       │   agent title+tags → confirm + memo  │ Notes folder │
+│ Capture app  │ ────────────── human gate ─────────▶ │ same .md    │
+└──────────────┘                                       └─────────────┘
+
+iOS (legacy — Shortcuts):  iPhone Shortcuts → _capture-staging/ → `capture process`
 ```
+
+Extraction: Apple Vision OCR (images, PDFs) · Whisper (voice) · Gemini Flash (iOS voice).
+Enrichment: Ollama (Mac titles/tags) · Gemini Flash (iOS titles/tags) · always overridable per stage.
 
 ## Tests
 
@@ -293,8 +326,10 @@ iOS:
 ```
 
 `tests/test_note_contract.py` pins the frontmatter contract — tags as a YAML
-flow sequence, scalars quoted when they would otherwise misparse. Run it before
-touching anything that writes a note.
+flow sequence, scalars quoted when they would otherwise misparse.
+`tests/test_capture_floor.py` pins the whole capture path with every provider
+disabled — the suite needs no model and no network. Run it before touching
+anything that writes a note.
 
 ## License
 
