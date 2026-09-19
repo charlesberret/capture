@@ -1,41 +1,64 @@
 import PhotosUI
 import SwiftUI
+import VisionKit
 
+/// Photograph (VisionKit camera) or pick a page; Apple Vision OCR is *shown*
+/// to the human. No note is written from this screen — the write happens only
+/// after a later confirm step.
 struct PhotoCaptureView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var pickerItem: PhotosPickerItem?
-    @State private var result: CaptureResult?
+    @State private var showCamera = false
+    @State private var reviewText: String?
     @State private var errorMessage: String?
-
-    let onCapture: (URL) async throws -> CaptureResult
 
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
 
-            Image(systemName: "photo.on.rectangle.angled")
+            Image(systemName: "camera.viewfinder")
                 .font(.system(size: 64))
                 .foregroundStyle(.tint)
 
-            Text("Pick a photo to extract text with Apple Vision")
+            Text("Photograph or pick a page. Apple Vision reads the text and shows it to you — nothing is written until you confirm.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal)
 
-            PhotosPicker(selection: $pickerItem, matching: .images) {
-                Text("Choose Photo")
+            if VNDocumentCameraViewController.isSupported {
+                Button {
+                    showCamera = true
+                } label: {
+                    Label("Photograph a Page", systemImage: "camera")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(appModel.isProcessing)
+            } else {
+                Text("Camera not available on this device — use the library instead.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(appModel.isProcessing)
 
-            if let result {
-                CaptureResultView(result: result)
-                    .padding()
+            PhotosPicker(selection: $pickerItem, matching: .images) {
+                Label("Choose from Library", systemImage: "photo")
             }
+            .buttonStyle(.bordered)
+            .disabled(appModel.isProcessing)
 
             Spacer()
         }
         .navigationTitle("Photo")
+        .navigationDestination(item: $reviewText) { text in
+            PageReviewView(ocrText: text, onRetake: { reviewText = nil })
+        }
+        .sheet(isPresented: $showCamera) {
+            DocumentScannerView { pdfURL in
+                showCamera = false
+                Task { await runOCR(pdf: pdfURL) }
+            } onCancel: {
+                showCamera = false
+            }
+        }
         .onChange(of: pickerItem) { _, newItem in
             guard let newItem else { return }
             Task { await process(item: newItem) }
@@ -58,7 +81,15 @@ struct PhotoCaptureView: View {
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("capture-photo-\(UUID().uuidString).jpg")
             try data.write(to: url)
-            result = try await onCapture(url)
+            reviewText = try await appModel.ocrImageOnly(at: url)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func runOCR(pdf url: URL) async {
+        do {
+            reviewText = try await appModel.ocrPDFOnly(at: url)
         } catch {
             errorMessage = error.localizedDescription
         }

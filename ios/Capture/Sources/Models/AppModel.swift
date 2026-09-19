@@ -43,7 +43,8 @@ final class AppModel: ObservableObject {
         return result
     }
 
-    func captureImage(at imageURL: URL) async throws -> CaptureResult {
+    /// OCR an image and **show the text to the human without writing anything**.
+    func ocrImageOnly(at imageURL: URL) async throws -> String {
         isProcessing = true
         statusMessage = "Reading text…"
         defer {
@@ -51,14 +52,11 @@ final class AppModel: ObservableObject {
             statusMessage = nil
         }
         refreshPipeline()
-        let text = try await pipeline.ocrImage(at: imageURL)
-        statusMessage = "Creating note…"
-        let result = try await pipeline.createNote(from: text)
-        lastResult = result
-        return result
+        return try await pipeline.ocrImage(at: imageURL)
     }
 
-    func captureScan(at pdfURL: URL) async throws -> CaptureResult {
+    /// OCR a scanned document and **show the text without writing anything**.
+    func ocrPDFOnly(at pdfURL: URL) async throws -> String {
         isProcessing = true
         statusMessage = "Reading document…"
         defer {
@@ -66,10 +64,7 @@ final class AppModel: ObservableObject {
             statusMessage = nil
         }
         refreshPipeline()
-        let text = try await pipeline.ocrPDF(at: pdfURL)
-        statusMessage = "Creating note…"
-        let result = try await pipeline.createNote(from: text)
-        lastResult = result
-        return result
+        return try await pipeline.ocrPDF(at: pdfURL)
     }
+
 }

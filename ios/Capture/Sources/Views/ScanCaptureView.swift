@@ -1,14 +1,13 @@
 import SwiftUI
-import UIKit
 import VisionKit
 
+/// VisionKit document camera → Apple Vision OCR, shown to the human.
+/// No note is written from this screen — only a later confirm step writes.
 struct ScanCaptureView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var showScanner = false
-    @State private var result: CaptureResult?
+    @State private var reviewText: String?
     @State private var errorMessage: String?
-
-    let onCapture: (URL) async throws -> CaptureResult
 
     var body: some View {
         VStack(spacing: 24) {
@@ -18,7 +17,7 @@ struct ScanCaptureView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.tint)
 
-            Text("Scan a document with edge detection and OCR each page")
+            Text("Scan a document with edge detection. Each page is OCR'd and the text is shown to you — nothing is written until you confirm.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal)
@@ -34,18 +33,16 @@ struct ScanCaptureView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let result {
-                CaptureResultView(result: result)
-                    .padding()
-            }
-
             Spacer()
         }
         .navigationTitle("Scan")
+        .navigationDestination(item: $reviewText) { text in
+            PageReviewView(ocrText: text, onRetake: { reviewText = nil })
+        }
         .sheet(isPresented: $showScanner) {
             DocumentScannerView { pdfURL in
                 showScanner = false
-                Task { await processScan(at: pdfURL) }
+                Task { await runOCR(pdf: pdfURL) }
             } onCancel: {
                 showScanner = false
             }
@@ -60,9 +57,9 @@ struct ScanCaptureView: View {
         }
     }
 
-    private func processScan(at url: URL) async {
+    private func runOCR(pdf url: URL) async {
         do {
-            result = try await onCapture(url)
+            reviewText = try await appModel.ocrPDFOnly(at: url)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -109,24 +106,15 @@ struct DocumentScannerView: UIViewControllerRepresentable {
             _ controller: VNDocumentCameraViewController,
             didFinishWith scan: VNDocumentCameraScan
         ) {
-            let pdfURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("capture-scan-\(UUID().uuidString).pdf")
-            // Render scan pages into a simple PDF via images processed by OCR path
-            // VisionKit scan — pass first page images combined; use PDF from scan if available
-            // VNDocumentCameraScan doesn't export PDF directly; we OCR page images
             Task {
-                await exportScan(scan, to: pdfURL)
+                await exportScan(scan)
             }
         }
 
         @MainActor
-        private func exportScan(_ scan: VNDocumentCameraScan, to pdfURL: URL) async {
-            // Build a multi-page image bundle saved as temp files; pipeline OCRs PDF.
-            // Since VNDocumentCameraScan has UIImages, write a combined text note path via temp PDF.
-            // Simplest: OCR each page and join — delegate to pipeline via a temp multi-image approach.
-            // For v1, OCR page 0 only if single page, else concatenate all pages as images in pipeline.
-            // We'll write images to temp folder and OCR first page for now, then extend.
-            // Better: create PDF from images using UIGraphicsPDFRenderer
+        private func exportScan(_ scan: VNDocumentCameraScan) async {
+            let pdfURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("capture-scan-\(UUID().uuidString).pdf")
             let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 612, height: 792))
             do {
                 try renderer.writePDF(to: pdfURL) { context in

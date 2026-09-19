@@ -22,6 +22,7 @@
 		7C286989B16682B077613852 /* correction_audio.txt in Resources */ = {isa = PBXBuildFile; fileRef = F1784D39A5743A81CF5C769A /* correction_audio.txt */; };
 		87615B88D8ED81A9D78AC5AE /* QuickCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B67E948E6E5DA4A03D5AC7B /* QuickCaptureView.swift */; };
 		8E7CF132696DF43F02341D4E /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3D9E9C23E968CE930DF480C /* AudioRecorder.swift */; };
+		9222558588CFA57A3A6ACD3D /* PageReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A7831EAA702F703C2C08B34 /* PageReviewView.swift */; };
 		B46F2F0762CDE4B618F11303 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2E7DD609DE2D51B5C546FE3 /* Assets.xcassets */; };
 		B7E46E17CF7D1ACFA4D889E5 /* KeywordConnectionsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A920FB9F604E2D82605DA7AC /* KeywordConnectionsProvider.swift */; };
 		B8E0B180882E966660EF233C /* VoiceCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25DCC27A914C588A4C513D9 /* VoiceCaptureView.swift */; };
@@ -35,6 +36,7 @@
 
 /* Begin PBXFileReference section */
 		064CC8FFFC11425C61A22333 /* tags.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = tags.txt; sourceTree = "<group>"; };
+		1A7831EAA702F703C2C08B34 /* PageReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageReviewView.swift; sourceTree = "<group>"; };
 		1B67E948E6E5DA4A03D5AC7B /* QuickCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickCaptureView.swift; sourceTree = "<group>"; };
 		398115DC474ADB4308E63F3E /* VisionOCRProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionOCRProvider.swift; sourceTree = "<group>"; };
 		42B12C269A3E142EC0E910B4 /* GeminiService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiService.swift; sourceTree = "<group>"; };
@@ -108,6 +110,7 @@
 			children = (
 				4E6AC0807328C53A83A81AE4 /* CaptureResultView.swift */,
 				88472EC9C8DAB706A00F5EC9 /* ContentView.swift */,
+				1A7831EAA702F703C2C08B34 /* PageReviewView.swift */,
 				A3A1BD4E4388D29755EC28E2 /* PhotoCaptureView.swift */,
 				1B67E948E6E5DA4A03D5AC7B /* QuickCaptureView.swift */,
 				D0E893990B83288A3DE674F9 /* ScanCaptureView.swift */,
@@ -260,6 +263,7 @@
 				B7E46E17CF7D1ACFA4D889E5 /* KeywordConnectionsProvider.swift in Sources */,
 				EC0A505E9123263B63E9AC72 /* NoteFormatter.swift in Sources */,
 				1D4F9C8E041240DE37384606 /* NotesStore.swift in Sources */,
+				9222558588CFA57A3A6ACD3D /* PageReviewView.swift in Sources */,
 				481CD2BF7E2E11250E0AFE46 /* PhotoCaptureView.swift in Sources */,
 				3442C3ED599B4845D518FDB8 /* Prompts.swift in Sources */,
 				87615B88D8ED81A9D78AC5AE /* QuickCaptureView.swift in Sources */,

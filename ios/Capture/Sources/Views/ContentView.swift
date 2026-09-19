@@ -98,13 +98,9 @@ struct ContentView: View {
                         try await appModel.captureVoice(from: url)
                     }
                 case .photo:
-                    PhotoCaptureView { url in
-                        try await appModel.captureImage(at: url)
-                    }
+                    PhotoCaptureView()
                 case .scan:
-                    ScanCaptureView { url in
-                        try await appModel.captureScan(at: url)
-                    }
+                    ScanCaptureView()
                 }
             }
             .environmentObject(appModel)
