@@ -27,3 +27,10 @@ targets:
       GENERATE_INFOPLIST_FILE: false
     entitlements:
       path: Capture/Supporting/Capture.entitlements
+  CaptureTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: CaptureTests
+    dependencies:
+      - target: Capture

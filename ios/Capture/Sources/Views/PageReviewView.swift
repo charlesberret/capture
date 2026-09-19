@@ -1,13 +1,24 @@
 import SwiftUI
 
-/// Shows extracted OCR text to the human before anything is written.
+/// Shows extracted OCR text to the human before anything is written (LAB-238),
+/// and lets them drag-highlight the span that will become the note body
+/// (LAB-239). Only the highlighted span proceeds; the forward path stays
+/// disabled until a real selection exists, so saving without one is refused.
 ///
-/// The photo/scan loop is deliberately read-only at this stage: the OCR is
-/// *shown*, and no note exists until the human confirms one in a later step.
-/// There is no save path in this view on purpose.
+/// No write happens in this view — the confirm step (LAB-240) owns the write.
 struct PageReviewView: View {
     let ocrText: String
     let onRetake: () -> Void
+
+    @State private var selection: SpanSelection
+    @State private var rowFrames: [Int: CGRect] = [:]
+    @State private var chosenSpan: String?
+
+    init(ocrText: String, onRetake: @escaping () -> Void) {
+        self.ocrText = ocrText
+        self.onRetake = onRetake
+        _selection = State(initialValue: SpanSelection(text: ocrText))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,32 +26,132 @@ struct PageReviewView: View {
                 .foregroundStyle(.orange)
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
+                .padding([.horizontal, .top])
+
+            Text("Drag across the lines that should become the note body.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
 
             ScrollView {
-                Text(ocrText)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(selection.lines.indices, id: \.self) { index in
+                        Text(selection.lines[index])
+                            .font(.body)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                            .padding(.vertical, 6)
+                            .background(
+                                selection.contains(index)
+                                    ? Color.accentColor.opacity(0.25)
+                                    : Color.clear
+                            )
+                            .background(rowGeometry(index))
+                            .contentShape(Rectangle())
+                            .gesture(rowGesture(index))
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+            .coordinateSpace(name: "page")
+            .onPreferenceChange(RowFramesKey.self) { frames in
+                rowFrames = frames
             }
 
-            Label(
-                "The note is written only after you confirm it.",
-                systemImage: "hand.raised"
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
+            Divider()
+
+            if let chosenSpan {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Selected span — this becomes the note body", systemImage: "text.badge.checkmark")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(chosenSpan)
+                        .font(.callout)
+                        .lineLimit(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("The confirm step (title + tags + memo) follows before anything is written.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            } else {
+                Label(
+                    "Continue is refused until a span is highlighted.",
+                    systemImage: "hand.raised"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+            }
+
+            Button {
+                if let span = selection.selectedText {
+                    chosenSpan = span
+                }
+            } label: {
+                Label("Highlight Selected Span", systemImage: "checkmark.square")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.horizontal)
+            .padding(.bottom)
+            .disabled(!selection.hasSelection)
         }
-        .navigationTitle("Review OCR")
+        .navigationTitle("Highlight the Span")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Discard", role: .destructive) {
                     onRetake()
                 }
             }
+        }
+    }
+
+    // MARK: - drag highlight plumbing
+
+    /// Publishes each row's frame (in the "page" space) so a drag that starts
+    /// on one row can hit-test the row under the finger as it moves.
+    private func rowGeometry(_ index: Int) -> some View {
+        GeometryReader { geo in
+            Color.clear.preference(
+                key: RowFramesKey.self,
+                value: [index: geo.frame(in: .named("page"))]
+            )
+        }
+    }
+
+    private func rowGesture(_ index: Int) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("page"))
+            .onChanged { value in
+                if value.translation == .zero {
+                    selection.begin(at: index)
+                } else if let row = row(at: value.location) {
+                    selection.drag(to: row)
+                }
+            }
+            .onEnded { _ in
+                selection.end()
+            }
+    }
+
+    private func row(at point: CGPoint) -> Int? {
+        rowFrames.first { _, frame in frame.contains(point) }?.key
+    }
+}
+
+/// Collects the frame of every OCR line row in the "page" coordinate space.
+private struct RowFramesKey: PreferenceKey {
+    static var defaultValue: [Int: CGRect] = [:]
+
+    static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
+        for (index, frame) in nextValue() {
+            value[index] = frame
         }
     }
 }
