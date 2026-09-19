@@ -9,14 +9,19 @@ import SwiftUI
 struct PageReviewView: View {
     let ocrText: String
     let onRetake: () -> Void
+    let onContinue: (String) -> Void
 
     @State private var selection: SpanSelection
     @State private var rowFrames: [Int: CGRect] = [:]
-    @State private var chosenSpan: String?
 
-    init(ocrText: String, onRetake: @escaping () -> Void) {
+    init(
+        ocrText: String,
+        onRetake: @escaping () -> Void,
+        onContinue: @escaping (String) -> Void
+    ) {
         self.ocrText = ocrText
         self.onRetake = onRetake
+        self.onContinue = onContinue
         _selection = State(initialValue: SpanSelection(text: ocrText))
     }
 
@@ -61,25 +66,7 @@ struct PageReviewView: View {
 
             Divider()
 
-            if let chosenSpan {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Selected span — this becomes the note body", systemImage: "text.badge.checkmark")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(chosenSpan)
-                        .font(.callout)
-                        .lineLimit(6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("The confirm step (title + tags + memo) follows before anything is written.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal)
-                .padding(.bottom, 8)
-            } else {
+            if !selection.hasSelection {
                 Label(
                     "Continue is refused until a span is highlighted.",
                     systemImage: "hand.raised"
@@ -92,10 +79,10 @@ struct PageReviewView: View {
 
             Button {
                 if let span = selection.selectedText {
-                    chosenSpan = span
+                    onContinue(span)
                 }
             } label: {
-                Label("Highlight Selected Span", systemImage: "checkmark.square")
+                Label("Continue with Selected Span", systemImage: "checkmark.square")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)

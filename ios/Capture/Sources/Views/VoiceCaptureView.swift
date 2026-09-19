@@ -3,11 +3,9 @@ import SwiftUI
 struct VoiceCaptureView: View {
     @EnvironmentObject private var appModel: AppModel
     @StateObject private var recorder = AudioRecorder()
-    @State private var result: CaptureResult?
+    @State private var proposal: NoteProposal?
     @State private var errorMessage: String?
     @State private var permissionDenied = false
-
-    let onCapture: (URL) async throws -> CaptureResult
 
     var body: some View {
         VStack(spacing: 24) {
@@ -29,14 +27,18 @@ struct VoiceCaptureView: View {
             .buttonStyle(.borderedProminent)
             .disabled(appModel.isProcessing)
 
-            if let result {
-                CaptureResultView(result: result)
-                    .padding()
-            }
+            Text("The transcript goes to the confirm screen — nothing is written until you confirm.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
 
             Spacer()
         }
         .navigationTitle("Voice")
+        .navigationDestination(item: $proposal) { proposal in
+            ConfirmNoteView(proposal: proposal)
+        }
         .alert("Microphone Access", isPresented: $permissionDenied) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -56,7 +58,8 @@ struct VoiceCaptureView: View {
         if recorder.isRecording {
             guard let url = recorder.stop() else { return }
             do {
-                result = try await onCapture(url)
+                let transcript = try await appModel.transcribeOnly(from: url)
+                proposal = try await appModel.proposeNote(for: transcript)
             } catch {
                 errorMessage = error.localizedDescription
             }

@@ -3,10 +3,8 @@ import SwiftUI
 struct QuickCaptureView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var text = ""
-    @State private var result: CaptureResult?
+    @State private var proposal: NoteProposal?
     @State private var errorMessage: String?
-
-    let onCapture: (String) async throws -> CaptureResult
 
     var body: some View {
         VStack(spacing: 16) {
@@ -15,20 +13,24 @@ struct QuickCaptureView: View {
                 .textFieldStyle(.roundedBorder)
                 .padding()
 
-            Button("Capture") {
-                Task { await submit() }
+            Button("Propose Note") {
+                Task { await propose() }
             }
             .buttonStyle(.borderedProminent)
             .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || appModel.isProcessing)
 
-            if let result {
-                CaptureResultView(result: result)
-                    .padding()
-            }
+            Text("Nothing is saved here — the agent drafts a title + tags and you confirm before the note is written.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
 
             Spacer()
         }
         .navigationTitle("Quick")
+        .navigationDestination(item: $proposal) { proposal in
+            ConfirmNoteView(proposal: proposal)
+        }
         .alert("Error", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -39,10 +41,9 @@ struct QuickCaptureView: View {
         }
     }
 
-    private func submit() async {
+    private func propose() async {
         do {
-            result = try await onCapture(text)
-            text = ""
+            proposal = try await appModel.proposeNote(for: text)
         } catch {
             errorMessage = error.localizedDescription
         }

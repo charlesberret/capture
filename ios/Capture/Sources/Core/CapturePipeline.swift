@@ -42,10 +42,11 @@ final class CapturePipeline {
         return try await ocr.extractText(fromPDF: url)
     }
 
-    func createNote(from content: String) async throws -> CaptureResult {
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Draft a title + tags proposal for a body. **Writes nothing** — the
+    /// proposal exists only to be confirmed (or edited) by the human.
+    func proposeNote(for body: String) async throws -> NoteProposal {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw CaptureError.emptyContent }
-        guard let notesURL = notesStore.resolvedURL else { throw CaptureError.notesFolderNotConfigured }
 
         let title = await generateTitle(for: trimmed)
         var tags = config.baseTags
@@ -53,16 +54,32 @@ final class CapturePipeline {
             if let modelTag = modelTag() { tags.append(modelTag) }
             tags.append(contentsOf: await suggestTags(for: trimmed))
         }
+        return NoteProposal(body: trimmed, proposedTitle: title, proposedTags: tags)
+    }
 
-        let (filename, body) = NoteFormatter.buildNote(
+    /// The **only** write path in the app: a human-confirmed note
+    /// (LAB-240). There is no caller that reaches this without the confirm
+    /// screen's Save button.
+    func writeConfirmedNote(
+        body: String,
+        title: String,
+        tags: [String],
+        memo: String
+    ) async throws -> CaptureResult {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw CaptureError.emptyContent }
+        guard let notesURL = notesStore.resolvedURL else { throw CaptureError.notesFolderNotConfigured }
+
+        let (filename, noteText) = NoteFormatter.buildNote(
             content: trimmed,
             title: title,
             tags: tags,
-            author: config.author
+            author: config.author,
+            memo: memo
         )
         let fileURL = notesURL.appendingPathComponent(filename)
         do {
-            try body.write(to: fileURL, atomically: true, encoding: .utf8)
+            try noteText.write(to: fileURL, atomically: true, encoding: .utf8)
         } catch {
             throw CaptureError.saveFailed(error.localizedDescription)
         }
@@ -76,7 +93,7 @@ final class CapturePipeline {
 
         return CaptureResult(
             filename: filename,
-            title: title,
+            title: NoteFormatter.slugify(title, maxLength: 80),
             content: trimmed,
             tags: tags,
             connections: related,
@@ -112,14 +129,13 @@ final class CapturePipeline {
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "\"'")) }
             .filter { !$0.isEmpty && $0.count < 30 }
-            .map { "[[\($0)]]" }
     }
 
     private func modelTag() -> String? {
         guard config.providerName(for: .title) == "gemini_flash"
             || config.providerName(for: .tags) == "gemini_flash" else { return nil }
         let prefix = config.geminiModel.split(separator: "-").first.map(String.init) ?? "gemini"
-        return "[[llm:\(prefix)]]"
+        return "llm/\(prefix)"
     }
 
     private func mimeType(for url: URL) -> String {

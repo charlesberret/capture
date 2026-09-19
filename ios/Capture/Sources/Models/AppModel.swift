@@ -15,20 +15,9 @@ final class AppModel: ObservableObject {
         pipeline = CapturePipeline(config: config, notesStore: notesStore)
     }
 
-    func captureText(_ text: String) async throws -> CaptureResult {
-        isProcessing = true
-        statusMessage = "Creating note…"
-        defer {
-            isProcessing = false
-            statusMessage = nil
-        }
-        refreshPipeline()
-        let result = try await pipeline.createNote(from: text)
-        lastResult = result
-        return result
-    }
-
-    func captureVoice(from audioURL: URL) async throws -> CaptureResult {
+    /// Transcribe audio **without writing anything** — the transcript goes
+    /// to the confirm screen.
+    func transcribeOnly(from audioURL: URL) async throws -> String {
         isProcessing = true
         statusMessage = "Transcribing…"
         defer {
@@ -36,11 +25,7 @@ final class AppModel: ObservableObject {
             statusMessage = nil
         }
         refreshPipeline()
-        let text = try await pipeline.transcribeAudio(at: audioURL)
-        statusMessage = "Creating note…"
-        let result = try await pipeline.createNote(from: text)
-        lastResult = result
-        return result
+        return try await pipeline.transcribeAudio(at: audioURL)
     }
 
     /// OCR an image and **show the text to the human without writing anything**.
@@ -67,4 +52,41 @@ final class AppModel: ObservableObject {
         return try await pipeline.ocrPDF(at: pdfURL)
     }
 
+    /// Draft a title + tags proposal for a body. Writes nothing — the confirm
+    /// screen owns the only write path.
+    func proposeNote(for body: String) async throws -> NoteProposal {
+        isProcessing = true
+        statusMessage = "Drafting title & tags…"
+        defer {
+            isProcessing = false
+            statusMessage = nil
+        }
+        refreshPipeline()
+        return try await pipeline.proposeNote(for: body)
+    }
+
+    /// Write the note the human just confirmed (title/tags/memo may be their
+    /// edits of the proposal). This is the app's only write.
+    func saveConfirmedNote(
+        body: String,
+        title: String,
+        tags: [String],
+        memo: String
+    ) async throws -> CaptureResult {
+        isProcessing = true
+        statusMessage = "Saving note…"
+        defer {
+            isProcessing = false
+            statusMessage = nil
+        }
+        refreshPipeline()
+        let result = try await pipeline.writeConfirmedNote(
+            body: body,
+            title: title,
+            tags: tags,
+            memo: memo
+        )
+        lastResult = result
+        return result
+    }
 }

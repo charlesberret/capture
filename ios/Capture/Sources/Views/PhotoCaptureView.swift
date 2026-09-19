@@ -10,6 +10,7 @@ struct PhotoCaptureView: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var showCamera = false
     @State private var reviewText: String?
+    @State private var proposal: NoteProposal?
     @State private var errorMessage: String?
 
     var body: some View {
@@ -49,7 +50,14 @@ struct PhotoCaptureView: View {
         }
         .navigationTitle("Photo")
         .navigationDestination(item: $reviewText) { text in
-            PageReviewView(ocrText: text, onRetake: { reviewText = nil })
+            PageReviewView(
+                ocrText: text,
+                onRetake: { reviewText = nil },
+                onContinue: { span in proposeAndContinue(body: span) }
+            )
+        }
+        .navigationDestination(item: $proposal) { proposal in
+            ConfirmNoteView(proposal: proposal)
         }
         .sheet(isPresented: $showCamera) {
             DocumentScannerView { pdfURL in
@@ -92,6 +100,16 @@ struct PhotoCaptureView: View {
             reviewText = try await appModel.ocrPDFOnly(at: url)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func proposeAndContinue(body: String) {
+        Task {
+            do {
+                proposal = try await appModel.proposeNote(for: body)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

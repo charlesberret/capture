@@ -7,6 +7,7 @@ struct ScanCaptureView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var showScanner = false
     @State private var reviewText: String?
+    @State private var proposal: NoteProposal?
     @State private var errorMessage: String?
 
     var body: some View {
@@ -37,7 +38,14 @@ struct ScanCaptureView: View {
         }
         .navigationTitle("Scan")
         .navigationDestination(item: $reviewText) { text in
-            PageReviewView(ocrText: text, onRetake: { reviewText = nil })
+            PageReviewView(
+                ocrText: text,
+                onRetake: { reviewText = nil },
+                onContinue: { span in proposeAndContinue(body: span) }
+            )
+        }
+        .navigationDestination(item: $proposal) { proposal in
+            ConfirmNoteView(proposal: proposal)
         }
         .sheet(isPresented: $showScanner) {
             DocumentScannerView { pdfURL in
@@ -62,6 +70,16 @@ struct ScanCaptureView: View {
             reviewText = try await appModel.ocrPDFOnly(at: url)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func proposeAndContinue(body: String) {
+        Task {
+            do {
+                proposal = try await appModel.proposeNote(for: body)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

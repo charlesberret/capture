@@ -86,17 +86,11 @@ struct ContentView: View {
             Group {
                 switch mode {
                 case .quick:
-                    QuickCaptureView { text in
-                        try await appModel.captureText(text)
-                    }
+                    QuickCaptureView()
                 case .text:
-                    TextCaptureView { text in
-                        try await appModel.captureText(text)
-                    }
+                    TextCaptureView()
                 case .voice:
-                    VoiceCaptureView { url in
-                        try await appModel.captureVoice(from: url)
-                    }
+                    VoiceCaptureView()
                 case .photo:
                     PhotoCaptureView()
                 case .scan:

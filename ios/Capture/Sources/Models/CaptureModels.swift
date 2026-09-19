@@ -12,7 +12,7 @@ enum CaptureStage: String, CaseIterable, Codable {
 struct ProviderDefaults {
     static let geminiModel = "gemini-2.0-flash"
     static let contentThreshold = 30
-    static let baseTags = ["[[kernel]]", "[[captured]]"]
+    static let baseTags = ["kernel", "captured"]
     static let serendipityAgeDays = 30
     static let maxConnections = 3
     static let maxKeywords = 10
@@ -84,6 +84,16 @@ enum CaptureMode: String, CaseIterable, Identifiable {
         case .scan: "doc.viewfinder.fill"
         }
     }
+}
+
+/// What the agent proposes and the human confirms: a title, tags, and the
+/// body they describe. The proposal is never written as-is — the confirm
+/// screen's Save button is the only path from proposal to note (LAB-240).
+struct NoteProposal: Identifiable, Hashable {
+    let id = UUID()
+    let body: String
+    var proposedTitle: String
+    var proposedTags: [String]
 }
 
 struct CaptureResult: Identifiable {
