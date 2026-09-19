@@ -34,3 +34,10 @@ targets:
       - path: CaptureTests
     dependencies:
       - target: Capture
+  CaptureUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: CaptureUITests
+    dependencies:
+      - target: Capture

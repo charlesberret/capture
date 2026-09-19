@@ -71,6 +71,27 @@ struct PhotoCaptureView: View {
             guard let newItem else { return }
             Task { await process(item: newItem) }
         }
+        #if DEBUG
+        .task {
+            // UI-test hook: the system photo picker cannot complete on a
+            // fresh simulator (Photos onboarding blocks library access).
+            // This injects the bundled fixture image so the *real* OCR,
+            // review, highlight, and confirm screens can be driven and
+            // captured. The picker path stays the only non-test way in.
+            guard ProcessInfo.processInfo.arguments.contains("-uitestInjectFixturePhoto"),
+                  reviewText == nil else { return }
+            guard let url = Bundle.main.url(forResource: "uitest-fixture", withExtension: "png")
+            else {
+                errorMessage = "UI-test fixture image missing from the bundle."
+                return
+            }
+            do {
+                reviewText = try await appModel.ocrImageOnly(at: url)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+        #endif
         .alert("Error", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
