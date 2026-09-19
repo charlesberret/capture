@@ -70,6 +70,37 @@ unchanged.
 Identical to the CLI — YAML frontmatter with `title`, `date`, `tags`, then
 body content. Files land directly in your chosen Notes folder.
 
+## Running the tests
+
+```bash
+cd ios
+xcodegen generate
+xcodebuild test -project Capture.xcodeproj -scheme Capture \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
+  -collect-test-diagnostics never
+```
+
+Unit suites: `CaptureTests` (NoteFormatter, SpanSelection) — no network, no
+Gemini. UI dogfood: `CaptureUITests` drives the real photo loop and attaches
+screenshots to the result bundle (`xcrun xcresulttool export attachments
+--path <bundle> --output-path <dir>`).
+
+**`-collect-test-diagnostics never` matters.** The default (`on-failure`)
+collects a simulator sysdiagnose after any test failure; on current
+Xcode/iOS-simulator combinations this collection hangs indefinitely —
+xcodebuild never exits and the result bundle is never finalized (verified
+A/B: default run stuck >2 min and 149 MB into diagnostics and had to be
+killed, bundle unopenable; with `never`, the same failure exits immediately
+and the bundle is valid and exportable). Use `on-failure` only when you
+actively want to harvest a sysdiagnose from an interactive session.
+
+`testFullPickerLoopOnDevice` (the honest end-to-end photo-picker path) skips
+by default; run it with `TEST_RUNNER_RUN_PICKER_TEST=1` on a device or a
+simulator whose Photos onboarding is complete. The default dogfood test
+injects the bundled fixture image via the `-uitestInjectFixturePhoto` DEBUG
+launch argument because the system picker never finalizes a selection on a
+fresh simulator.
+
 ## Project structure
 
 ```
