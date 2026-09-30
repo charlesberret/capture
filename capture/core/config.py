@@ -67,7 +67,7 @@ MAC_PROVIDER_DEFAULTS = {
         "default": "ollama_local",
         "ollama_local": {
             "model": "qwen-capable",
-            "host": "http://localhost:11434",
+            "host": "http://127.0.0.1:11434",
             "timeout": 60,
         },
         "gemini_flash": {
@@ -82,7 +82,7 @@ MAC_PROVIDER_DEFAULTS = {
         "default": "ollama_local",
         "ollama_local": {
             "model": "qwen-capable",
-            "host": "http://localhost:11434",
+            "host": "http://127.0.0.1:11434",
             "timeout": 45,
         },
         "gemini_flash": {
@@ -96,7 +96,7 @@ MAC_PROVIDER_DEFAULTS = {
         "default": "ollama_local",
         "ollama_local": {
             "model": "qwen-capable",
-            "host": "http://localhost:11434",
+            "host": "http://127.0.0.1:11434",
             "timeout": 90,
         },
         "gemini_flash": {

@@ -37,6 +37,8 @@ providers:
     default: ollama_local           # ollama_local | gemini_flash | truncate | disabled
     ollama_local:
       model: qwen-capable
+      # GPU host: tinpusher fence (gpu-admit). Not the raw daemon on :11435.
+      host: http://127.0.0.1:11434
       timeout: 20
     gemini_flash:
       model: gemini-2.0-flash
@@ -47,6 +49,7 @@ providers:
     default: ollama_local           # ollama_local | gemini_flash | disabled
     ollama_local:
       model: qwen-capable
+      host: http://127.0.0.1:11434
       timeout: 15
     gemini_flash:
       model: gemini-2.0-flash
@@ -57,6 +60,7 @@ providers:
     default: ollama_local           # ollama_local | gemini_flash | claude | disabled
     ollama_local:
       model: qwen-capable
+      host: http://127.0.0.1:11434
       timeout: 30
     gemini_flash:
       model: gemini-2.0-flash

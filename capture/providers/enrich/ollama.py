@@ -1,39 +1,20 @@
-"""Ollama providers for title and tag enrichment."""
+"""Ollama providers for title and tag enrichment.
+
+Requests go to the configured HTTP host (the tinpusher fence on the GPU host),
+not `ollama run`. See capture.providers.ollama_http.
+"""
 
 from __future__ import annotations
 
-import subprocess
-
 from capture.core.prompts_loader import format_prompt
-from capture.core.text import clean_model_output
+from capture.providers.ollama_http import ollama_complete, ollama_warmup
 
 
-def _ollama_run(model: str, prompt: str, timeout: int) -> str | None:
-    try:
-        result = subprocess.run(
-            ["ollama", "run", model, prompt],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        if result.returncode == 0:
-            return clean_model_output(result.stdout)
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-    return None
-
-
-def _wait_warmup(warmup_proc, timeout: int = 90) -> None:
-    """Wait for a background warmup to finish loading the model.
-
-    Never kill it on timeout: the warmup exists to get a multi-GB model
-    resident in the Ollama server, and killing it mid-load forfeits exactly
-    the work we were waiting on, so the real call pays the cold start again.
-    """
-    if not warmup_proc:
+def _wait_warmup(warmup, timeout: int = 90) -> None:
+    if not warmup:
         return
     try:
-        warmup_proc.wait(timeout=timeout)
+        warmup.wait(timeout=timeout)
     except Exception:
         pass
 
@@ -43,23 +24,12 @@ class OllamaTitleProvider:
         self.cfg = provider_cfg
 
     def warmup(self):
-        try:
-            return subprocess.Popen(
-                ["ollama", "run", self.cfg.get("model", "qwen-capable"), "hi"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-        except FileNotFoundError:
-            return None
+        return ollama_warmup(self.cfg)
 
     def generate(self, content: str, warmup=None) -> str | None:
         _wait_warmup(warmup)
         prompt = format_prompt("title", content=content[:1000])
-        raw = _ollama_run(
-            self.cfg.get("model", "qwen-capable"),
-            prompt,
-            self.cfg.get("timeout", 20),
-        )
+        raw = ollama_complete(self.cfg, prompt)
         if not raw:
             return None
         title = raw.strip("\"'")
@@ -75,11 +45,7 @@ class OllamaTagsProvider:
     def suggest(self, content: str, warmup=None) -> list[str]:
         _wait_warmup(warmup)
         prompt = format_prompt("tags", content=content[:500])
-        raw = _ollama_run(
-            self.cfg.get("model", "qwen-capable"),
-            prompt,
-            self.cfg.get("timeout", 15),
-        )
+        raw = ollama_complete(self.cfg, prompt)
         if not raw:
             return []
         tags = [t.strip().strip("\"'") for t in raw.split(",")]

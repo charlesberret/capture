@@ -218,6 +218,18 @@ environment to override every stage at once. On an M3 Pro a title takes
 tags) are sized for a cold load rather than a warm one. The tool warms up
 Ollama in the background while you type, so the model is ready when needed.
 
+### GPU-host fence
+
+On the GPU host the raw Ollama daemon listens on `127.0.0.1:11435`, and the
+shell's `OLLAMA_HOST` points there. Capture does not follow that variable.
+Title, tag, and correction calls `POST /api/generate` to the configured
+`host`, which defaults to `http://127.0.0.1:11434` — the tinpusher fence. That
+proxy runs the same admission decision as `gpu-admit`. A local tag is admitted
+at the fence; capture never knocks `:11435` itself. Point
+`providers.*.ollama_local.host` somewhere else only when you mean a different
+daemon (a Mac's own Ollama on the same port is the usual case). The test suite
+stubs these stages and does not need a live daemon.
+
 ## iOS app (the phone path)
 
 A native SwiftUI app lives in `ios/`. It writes the same `.md` notes directly
