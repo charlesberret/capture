@@ -5,7 +5,7 @@ phase: active
 canonical: ~/cloud/git-projects/capture
 deps: pip
 test_cmd: .venv/bin/pytest tests/ -q
-test_signal: 37 passed
+test_signal: 55 passed
 healthbeacon: none
 ---
 
@@ -75,8 +75,12 @@ finished claim.
 
 ## Next action
 
-- [ ] Decide whether capture should file into the staging folder or keep writing
-      straight to the notes root (`notes-process` classifies either way)
+- [x] Decide whether capture should file into the staging folder or keep writing
+      straight to the notes root. 2026-10-05: notes root. Staging stays the
+      legacy Shortcuts path. No writer change.
+- [ ] Prove a local title/tag call hits the fence (`127.0.0.1:11434`), not the
+      raw daemon (`:11435`), on the GPU host. Code is on `main` (`bdc87b7`); not
+      yet exercised against the live fence.
 - [ ] Work the 21 fragment items on `notes/.kettle/` — decide the real bar by
       dismissing the ones that are finished as written
 
