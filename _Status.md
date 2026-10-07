@@ -5,7 +5,7 @@ phase: active
 canonical: ~/cloud/git-projects/capture
 deps: pip
 test_cmd: .venv/bin/pytest tests/ -q
-test_signal: 55 passed
+test_signal: 67 passed
 healthbeacon: none
 ---
 
@@ -78,16 +78,17 @@ finished claim.
 - [x] Decide whether capture should file into the staging folder or keep writing
       straight to the notes root. 2026-10-05: notes root. Staging stays the
       legacy Shortcuts path. No writer change.
-- [ ] Prove a local title/tag call hits the fence (`127.0.0.1:11434`), not the
-      raw daemon (`:11435`), on the GPU host. Code is on `main` (`bdc87b7`); not
-      yet exercised against the live fence.
+- [x] Prove a local title/tag call hits the fence (`127.0.0.1:11434`), not the
+      raw daemon (`:11435`), on the GPU host. 2026-10-05: detached `bdc87b7`
+      worktree POSTed `/api/generate`; fence returned `503 tinpusher: blocked —
+      not loading`. Nothing resident on `:11435`.
 - [ ] Work the 21 fragment items on `notes/.kettle/` — decide the real bar by
       dismissing the ones that are finished as written
 
 ## Known gaps
 
-- Test suite covers the note contract only — config precedence, provider resolution,
-  and the `process` folder walk are still untested
+- Config precedence, the `process` folder walk, and unknown provider names are
+  pinned (`tests/test_config.py`, `test_process.py`, `test_registry.py`).
 - No healthbeacon
 - Deps declared in `pyproject.toml` only; no lock, so dep-freshness reads blind
 - `notes/coursework/202601170656 - tibetan.md` holds a second frontmatter block inside
