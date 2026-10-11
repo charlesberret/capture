@@ -287,7 +287,7 @@ Create iOS Shortcuts that save to the staging folder, then process with
 capture process
 ```
 
-Transcribes audio with Whisper, OCRs images and PDFs with Apple Vision, creates notes with smart titles, and sends a macOS notification when complete.
+Transcribes audio with Whisper, OCRs images and PDFs with Apple Vision, creates notes with smart titles, and sends a macOS notification when complete. Staging files are removed only after a note is written; empty text, failed OCR, and failed transcription stay in the folder.
 
 ## Project layout
 

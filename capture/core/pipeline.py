@@ -298,13 +298,17 @@ def process_capture_folder(topic: str = "general", correct: bool = True) -> None
 
     for idx, item in enumerate(items, 1):
         print(f"[{idx}/{len(items)}] {item.name}")
+        filed = False
 
         if item.suffix.lower() in (".txt", ".md"):
             content = item.read_text().strip()
             if content:
                 write_note(content)
                 processed["text"] += 1
-            item.unlink()
+                filed = True
+            else:
+                print("  → Skipping empty file")
+                processed["skipped"] += 1
 
         elif item.suffix.lower() in (".jpg", ".jpeg", ".png", ".heic"):
             print("  → OCR processing...")
@@ -313,10 +317,10 @@ def process_capture_folder(topic: str = "general", correct: bool = True) -> None
                 print(f"  ✓ Extracted {len(text)} chars")
                 write_note(text)
                 processed["photo"] += 1
+                filed = True
             else:
                 print("  ✗ Could not OCR image")
                 processed["skipped"] += 1
-            item.unlink()
 
         elif item.suffix.lower() == ".pdf":
             print("  → OCR processing PDF...")
@@ -325,10 +329,10 @@ def process_capture_folder(topic: str = "general", correct: bool = True) -> None
                 print(f"  ✓ Extracted {len(text)} chars")
                 write_note(text)
                 processed["pdf"] += 1
+                filed = True
             else:
                 print("  ✗ Could not OCR PDF")
                 processed["skipped"] += 1
-            item.unlink()
 
         elif item.suffix.lower() in (".m4a", ".mp3", ".wav", ".caf"):
             print("  → Transcribing...")
@@ -338,16 +342,19 @@ def process_capture_folder(topic: str = "general", correct: bool = True) -> None
                     print(f"  ✓ Transcribed {len(text)} chars")
                     write_note(text)
                     processed["voice"] += 1
+                    filed = True
                 else:
                     print("  ✗ Transcription failed")
                     processed["skipped"] += 1
             except Exception as e:
                 print(f"  ✗ Error: {e}")
                 processed["skipped"] += 1
-            item.unlink()
         else:
             print(f"  → Skipping unknown type: {item.suffix}")
             processed["skipped"] += 1
+
+        if filed:
+            item.unlink()
 
     print(f"\n{'='*40}")
     print("Processing complete!")

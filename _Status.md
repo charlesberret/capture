@@ -4,8 +4,8 @@ kind: software
 phase: active
 canonical: ~/cloud/git-projects/capture
 deps: pip
-test_cmd: .venv/bin/pytest tests/ -q
-test_signal: 67 passed
+test_cmd: .venv/bin/python -m pytest tests/ -q
+test_signal: 69 passed
 healthbeacon: none
 ---
 
@@ -89,6 +89,10 @@ finished claim.
 
 - Config precedence, the `process` folder walk, and unknown provider names are
   pinned (`tests/test_config.py`, `test_process.py`, `test_registry.py`).
+- `process` unlinks a staging file only after a note is written (empty text,
+  failed OCR, failed transcription, and transcribe exceptions stay on disk).
+- `ocr_pdf` still calls Apple Vision even when the OCR stage is `disabled`
+  (images go through the registry; PDFs do not).
 - No healthbeacon
 - Deps declared in `pyproject.toml` only; no lock, so dep-freshness reads blind
 - `notes/coursework/202601170656 - tibetan.md` holds a second frontmatter block inside
