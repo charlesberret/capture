@@ -89,6 +89,8 @@ finished claim.
 
 - Config precedence, the `process` folder walk, and unknown provider names are
   pinned (`tests/test_config.py`, `test_process.py`, `test_registry.py`).
+  `pyproject.toml` sets `pythonpath = ["."]` so both `.venv/bin/pytest tests/`
+  and `.venv/bin/python -m pytest tests/` collect.
 - `process` unlinks a staging file only after a note is written (empty text,
   failed OCR, failed transcription, and transcribe exceptions stay on disk).
 - OCR `disabled` is a hard skip: `ocr_pdf` does not call Vision, and
