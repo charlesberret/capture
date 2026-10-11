@@ -31,7 +31,7 @@ def interactive_menu() -> None:
 ║  [t] Text block (editor)          ║
 ║  [p] Photo/image (OCR)            ║
 ║  [v] Voice recording              ║
-║  [r] Process _Capture folder      ║
+║  [r] Process staging folder       ║
 ║  [x] Exit                         ║
 ╚═══════════════════════════════════╝
   → {dest_display}
@@ -140,7 +140,7 @@ def main() -> None:
         help="File the entries on the desk (default: report only)",
     )
 
-    process_parser = subparsers.add_parser("process", help="Process _Capture folder")
+    process_parser = subparsers.add_parser("process", help="Process staging folder")
     process_parser.add_argument("--dest", "-d", type=str, help=argparse.SUPPRESS)
     process_parser.add_argument(
         "--topic", "-t", type=str, default="general", help="Topic for vocabulary hints (default: general)"

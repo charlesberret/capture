@@ -5,7 +5,7 @@ phase: active
 canonical: ~/cloud/git-projects/capture
 deps: pip
 test_cmd: .venv/bin/python -m pytest tests/ -q
-test_signal: 71 passed
+test_signal: 72 passed
 healthbeacon: none
 ---
 
