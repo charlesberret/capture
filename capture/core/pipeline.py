@@ -74,6 +74,8 @@ def transcribe_async(audio_path: Path | str, topic: str = "general", *, correct:
 
 
 def ocr_image(filepath: Path | str) -> str | None:
+    if get_stage_provider_name("ocr") == "disabled":
+        return None
     provider = get_provider("ocr")
     text = provider.extract(Path(filepath))
     if text:
@@ -92,6 +94,8 @@ def ocr_image(filepath: Path | str) -> str | None:
 
 
 def ocr_pdf(filepath: Path | str) -> str | None:
+    if get_stage_provider_name("ocr") == "disabled":
+        return None
     from capture.providers.ocr.apple_vision import ocr_pdf as vision_pdf
 
     return vision_pdf(Path(filepath))

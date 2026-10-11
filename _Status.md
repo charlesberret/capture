@@ -5,7 +5,7 @@ phase: active
 canonical: ~/cloud/git-projects/capture
 deps: pip
 test_cmd: .venv/bin/python -m pytest tests/ -q
-test_signal: 69 passed
+test_signal: 71 passed
 healthbeacon: none
 ---
 
@@ -91,8 +91,8 @@ finished claim.
   pinned (`tests/test_config.py`, `test_process.py`, `test_registry.py`).
 - `process` unlinks a staging file only after a note is written (empty text,
   failed OCR, failed transcription, and transcribe exceptions stay on disk).
-- `ocr_pdf` still calls Apple Vision even when the OCR stage is `disabled`
-  (images go through the registry; PDFs do not).
+- OCR `disabled` is a hard skip: `ocr_pdf` does not call Vision, and
+  `ocr_image` does not fall through to apple_vision / tesseract.
 - No healthbeacon
 - Deps declared in `pyproject.toml` only; no lock, so dep-freshness reads blind
 - `notes/coursework/202601170656 - tibetan.md` holds a second frontmatter block inside

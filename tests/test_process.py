@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from capture.core import state
 from capture.core.config import set_config
-from capture.core.pipeline import process_capture_folder
+from capture.core.pipeline import ocr_image, ocr_pdf, process_capture_folder
 from tests.test_capture_floor import disabled_config
 
 
@@ -106,14 +106,8 @@ def _run_process(tmp_path, files):
     return notes, staging
 
 
-def test_process_unlinks_only_after_a_successful_write(tmp_path, monkeypatch):
-    """Empty text, failed OCR, failed transcription, and failed PDF stay on disk.
-
-    PDF OCR is hardcoded to Apple Vision (not the registry), so the test
-    stubs that one call to None — the walk still owns the unlink decision.
-    """
-    monkeypatch.setattr("capture.core.pipeline.ocr_pdf", lambda path: None)
-
+def test_process_unlinks_only_after_a_successful_write(tmp_path):
+    """Empty text, failed OCR, failed transcription, and failed PDF stay on disk."""
     notes, staging = _run_process(
         tmp_path,
         {
@@ -133,6 +127,47 @@ def test_process_unlinks_only_after_a_successful_write(tmp_path, monkeypatch):
     assert (staging / "shot.jpg").exists()
     assert (staging / "scan.pdf").exists()
     assert (staging / "clip.wav").exists()
+
+
+def test_ocr_pdf_does_not_call_vision_when_ocr_is_disabled(tmp_path, monkeypatch):
+    import capture.core.config as config_mod
+
+    def boom(path):
+        raise AssertionError("Apple Vision should not run when OCR is disabled")
+
+    monkeypatch.setattr("capture.providers.ocr.apple_vision.ocr_pdf", boom)
+    set_config(disabled_config(tmp_path))
+    try:
+        assert ocr_pdf(tmp_path / "scan.pdf") is None
+    finally:
+        config_mod._config = None
+
+
+def test_ocr_image_does_not_fall_through_when_ocr_is_disabled(tmp_path, monkeypatch):
+    """A disabled default must not walk apple_vision / tesseract as fallbacks."""
+    import capture.core.config as config_mod
+
+    cfg = disabled_config(tmp_path)
+    cfg["providers"]["ocr"] = {
+        "default": "disabled",
+        "disabled": {},
+        "apple_vision": {"recognition_level": "accurate"},
+        "tesseract": {"lang": "eng"},
+    }
+
+    def boom(*args, **kwargs):
+        raise AssertionError("OCR fallback must not run when the stage is disabled")
+
+    class Boom:
+        extract = staticmethod(boom)
+
+    monkeypatch.setattr("capture.providers.ocr.apple_vision.AppleVisionProvider", Boom)
+    monkeypatch.setattr("capture.providers.ocr.tesseract.TesseractProvider", Boom)
+    set_config(cfg)
+    try:
+        assert ocr_image(tmp_path / "shot.jpg") is None
+    finally:
+        config_mod._config = None
 
 
 def test_process_leaves_voice_file_when_transcribe_raises(tmp_path, monkeypatch):
