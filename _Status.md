@@ -82,8 +82,13 @@ finished claim.
       raw daemon (`:11435`), on the GPU host. 2026-10-05: detached `bdc87b7`
       worktree POSTed `/api/generate`; fence returned `503 tinpusher: blocked —
       not loading`. Nothing resident on `:11435`.
-- [ ] Work the 21 fragment items on `notes/.kettle/` — decide the real bar by
-      dismissing the ones that are finished as written
+- none assigned (Linear `capture` had 0 open issues on 2026-10-11; this sitting
+  has no next code unit)
+
+## Waiting on patron
+
+- 21 fragment items on `notes/.kettle/` (20 pending, 1 dismissed, curated
+  2026-09-06) — human bar; this tree files the desk and does not decide it
 
 ## Known gaps
 
