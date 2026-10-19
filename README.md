@@ -1,6 +1,6 @@
 # capture
 
-Quick multi-modal note capture with LLM-powered titles and tags.
+Quick multi-modal note capture with LLM-powered titles and tags. It turns text, voice, photos and PDFs into timestamped Markdown notes with YAML frontmatter, from a Mac command line or a native iPhone app.
 
 Two surfaces, one note shape:
 
@@ -9,9 +9,16 @@ Two surfaces, one note shape:
 
 An older iOS-Shortcuts staging flow still works, but it is legacy. See [iOS Shortcuts, legacy](#ios-shortcuts-legacy). The native app is the product path.
 
+## Status
+
+Version 1.1.0, installed from a clone (below). The CLI runs without any model: with every provider `disabled` it still writes correct notes. The iOS app builds from source with Xcode; there is no App Store or TestFlight release.
+
 ## Install
 
 ```bash
+git clone https://github.com/charlesberret/capture.git
+cd capture
+
 # Option 1: pipx (recommended)
 pipx install .
 
@@ -19,7 +26,8 @@ pipx install .
 python3 -m venv .venv && .venv/bin/pip install -e '.[all]'
 
 # Option 3: symlink the installed entry point onto your PATH
-ln -s "$PWD/.venv/bin/capture" ~/.local/bin/capture
+mkdir -p "$HOME/.local/bin"
+ln -s "$PWD/.venv/bin/capture" "$HOME/.local/bin/capture"
 ```
 
 `capture/` is the Python package, not a runnable script. Symlink the generated `bin/capture` entry point, never `capture/capture`.
@@ -29,7 +37,7 @@ ln -s "$PWD/.venv/bin/capture" ~/.local/bin/capture
 Python 3.9+ is required.
 
 Optional:
-- [Ollama](https://ollama.com) and a model, for example `ollama pull qwen2.5:7b`. Set any custom model with `OLLAMA_MODEL`. This is for smart titles and tags.
+- [Ollama](https://ollama.com) and a model, for example `ollama pull qwen2.5:7b`. Set the model you pulled with `OLLAMA_MODEL`. This is for smart titles and tags.
 - [Whisper](https://github.com/openai/whisper), for voice transcription
 - [PyObjC](https://pyobjc.readthedocs.io/), for Apple Vision OCR, macOS only
 - [tesseract](https://github.com/tesseract-ocr/tesseract), for an OCR fallback
@@ -146,14 +154,14 @@ tags: [kernel, captured, llm/qwen-capable, cypherpunks, tools]
 ---
 ```
 
-Tags are a YAML flow sequence, not `[[wikilinks]]`. Capture deliberately does not stamp the `kind`, `subject`, `status`, or `source` contract. A separate classification pass owns those fields.
+Tags are a YAML flow sequence, not `[[wikilinks]]`. `kernel` and `captured` are the default base tags and can be changed under `defaults.tags`. Capture deliberately does not stamp the `kind`, `subject`, `status`, or `source` contract. A separate classification pass, if you run one, owns those fields.
 
 ### Smart titles
 Uses Ollama to generate concise 3-8 word titles. Falls back to first-line truncation for short content or when Ollama is unavailable.
 
 ### Fragments
 
-A captured thought often lands as a few words, enough to remember and not enough to work from. `capture fragments` scans the notes root for bodies under 200 characters and files an expansion item per fragment on the tree's Kettle desk, `.kettle/runtime/queue.json`, so a sweep can prompt you to grow them.
+A captured thought often lands as a few words, enough to remember and not enough to work from. `capture fragments` scans the notes root for bodies under 200 characters and files an expansion item per fragment on the notes folder's [Kettle](https://github.com/charlesberret/kettle) desk, `.kettle/runtime/queue.json`, so a Kettle review round can prompt you to grow them. It needs a Kettle desk in that folder to be useful; the notes themselves are never touched.
 
 ```bash
 capture fragments               # report only (default)
@@ -189,11 +197,11 @@ Point to it with `whisper_dictionary` in config, or place `whisper-dictionary.ya
 
 ### Ollama model
 
-The default model name is `qwen-capable`. Any Ollama model works. Override with `providers.title.ollama_local.model`, or set `OLLAMA_MODEL` in the environment to override every stage at once. On an M3 Pro a title takes ~4-5s once the model is resident, so the stage timeouts are sized for a cold load rather than a warm one. Title timeout is 60s and tag timeout is 45s. The tool warms up Ollama in the background while you type, so the model is ready when needed.
+The built-in default model name is `qwen-capable`, a local alias, so on a fresh machine set `OLLAMA_MODEL` (or `providers.title.ollama_local.model`) to a model you have pulled. Any Ollama model works. `OLLAMA_MODEL` overrides every stage at once. On an M3 Pro a title takes ~4-5s once the model is resident, so the stage timeouts are sized for a cold load rather than a warm one. Title timeout is 60s and tag timeout is 45s. The tool warms up Ollama in the background while you type, so the model is ready when needed.
 
-### GPU-host fence
+### Ollama host
 
-On the GPU host the raw Ollama daemon listens on `127.0.0.1:11435`, and the shell's `OLLAMA_HOST` points there. Capture does not follow that variable. Title, tag, and correction calls `POST /api/generate` to the configured `host`, which defaults to `http://127.0.0.1:11434`, the tinpusher fence. That proxy runs the same admission decision as `gpu-admit`. A local tag is admitted at the fence. Capture never knocks `:11435` itself. Point `providers.*.ollama_local.host` somewhere else only when you mean a different daemon. A Mac's own Ollama on the same port is the usual case. The test suite stubs these stages and does not need a live daemon.
+Title, tag, and correction calls `POST /api/generate` to the configured `host`, which defaults to `http://127.0.0.1:11434`, Ollama's standard port. Capture does not follow the `OLLAMA_HOST` environment variable. To use a different daemon, or a proxy in front of one, set `providers.*.ollama_local.host`. The test suite stubs these stages and does not need a live daemon.
 
 ## iOS app, the phone path
 
@@ -298,4 +306,4 @@ Extraction uses Apple Vision OCR for images and PDFs, Whisper for voice, and Gem
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).

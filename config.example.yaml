@@ -37,7 +37,7 @@ providers:
     default: ollama_local           # ollama_local | gemini_flash | truncate | disabled
     ollama_local:
       model: qwen-capable
-      # GPU host: tinpusher fence (gpu-admit). Not the raw daemon on :11435.
+      # Ollama's standard local port. Point this at a proxy or another daemon if you run one.
       host: http://127.0.0.1:11434
       timeout: 20
     gemini_flash:
