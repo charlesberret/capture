@@ -5,7 +5,7 @@ to work from. This scans the notes root for those fragments and files an
 expansion item per fragment on the tree's `.kettle/` desk.
 
 Notes themselves are never modified: the frontmatter contract belongs to
-notes-process, and a fragment is a fact about a note rather than a property of
+the downstream note tools, and a fragment is a fact about a note rather than a property of
 it. That also means a dismissal has to live on the desk, which is what makes a
 crude length test tolerable — say "this one is finished" once and it stays said.
 """

@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Shows extracted OCR text to the human before anything is written (LAB-238),
-/// and lets them drag-highlight the span that will become the note body
-/// (LAB-239). Only the highlighted span proceeds; the forward path stays
+/// Shows extracted OCR text to the human before anything is written,
+/// and lets them drag-highlight the span that will become the note body.
+/// Only the highlighted span proceeds; the forward path stays
 /// disabled until a real selection exists, so saving without one is refused.
 ///
-/// No write happens in this view — the confirm step (LAB-240) owns the write.
+/// No write happens in this view — the confirm step owns the write.
 struct PageReviewView: View {
     let ocrText: String
     let onRetake: () -> Void

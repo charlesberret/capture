@@ -1,7 +1,7 @@
 import Foundation
 
 /// The drag-highlight state machine for the OCR span that becomes the note
-/// body (LAB-239).
+/// body.
 ///
 /// The load-bearing rule: **a selection that resolves to no text is not a
 /// selection**. `hasSelection` is the single gate the UI uses — with it false,

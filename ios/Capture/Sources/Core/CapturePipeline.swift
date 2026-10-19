@@ -57,8 +57,8 @@ final class CapturePipeline {
         return NoteProposal(body: trimmed, proposedTitle: title, proposedTags: tags)
     }
 
-    /// The **only** write path in the app: a human-confirmed note
-    /// (LAB-240). There is no caller that reaches this without the confirm
+    /// The **only** write path in the app: a human-confirmed note.
+    /// There is no caller that reaches this without the confirm
     /// screen's Save button.
     func writeConfirmedNote(
         body: String,

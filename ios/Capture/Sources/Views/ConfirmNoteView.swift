@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The human gate before any note is written (LAB-240).
+/// The human gate before any note is written.
 ///
 /// The agent's proposal (title + tags) arrives pre-filled but **editable**;
 /// an optional short memo appends to the body. Nothing reaches the notes

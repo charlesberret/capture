@@ -1,7 +1,7 @@
 """The note frontmatter contract.
 
-Capture writes into `~/cloud/sync/notes/`, whose frontmatter is consumed by
-machines (notes-process, Obsidian, gbrain). In 2026 a 211-note migration had
+Capture writes into the notes directory, whose frontmatter is consumed by
+other tools (Obsidian, indexers, scripts). In 2026 a 211-note migration had
 to undo `tags: [[kernel]], [[captured]]` — invalid YAML — into the flow
 sequence `tags: [kernel, captured]`. Capture was the source of that format and
 kept emitting it. These tests pin the contract so it cannot regress again.

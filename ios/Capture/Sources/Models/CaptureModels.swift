@@ -88,7 +88,7 @@ enum CaptureMode: String, CaseIterable, Identifiable {
 
 /// What the agent proposes and the human confirms: a title, tags, and the
 /// body they describe. The proposal is never written as-is — the confirm
-/// screen's Save button is the only path from proposal to note (LAB-240).
+/// screen's Save button is the only path from proposal to note.
 struct NoteProposal: Identifiable, Hashable {
     let id = UUID()
     let body: String

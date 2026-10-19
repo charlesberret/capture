@@ -2,7 +2,7 @@ import Foundation
 
 /// Builds the note exactly like the Python CLI: `YYYYMMDDHHMM - Slug.md`
 /// with YAML frontmatter whose `tags` are a flow sequence and whose scalars
-/// are quoted when bare YAML would misparse them (LAB-240: the same YAML+md
+/// are quoted when bare YAML would misparse them (the same YAML+md
 /// as the CLI — mirror of `capture.core.note`).
 enum NoteFormatter {
     static func timestamp() -> String {

@@ -1,4 +1,4 @@
-"""The capture floor (LAB-236): the whole capture path with every model
+"""The capture floor: the whole capture path with every model
 provider **disabled** — no Ollama, no Gemini, no network — and the note
 file contract pinned end to end: filename, frontmatter, body.
 

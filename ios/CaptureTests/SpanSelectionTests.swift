@@ -2,7 +2,7 @@ import XCTest
 
 @testable import Capture
 
-/// LAB-239: the span-selection gate. These tests pin the load-bearing rule —
+/// the span-selection gate. These tests pin the load-bearing rule —
 /// a selection that resolves to no text is not a selection, so the UI's
 /// forward path cannot be enabled without a real span.
 final class SpanSelectionTests: XCTestCase {

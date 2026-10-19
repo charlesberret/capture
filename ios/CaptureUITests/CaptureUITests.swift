@@ -1,6 +1,6 @@
 import XCTest
 
-/// LAB-238/239/240 dogfood: drives the real app in the simulator through the
+/// End-to-end: drives the real app in the simulator through the
 /// photo loop — **see the OCR**, confirm nothing is written, drag-highlight a
 /// span, and reach the confirm gate. Screenshots attach at each stage.
 ///
@@ -28,7 +28,7 @@ final class CaptureUITests: XCTestCase {
         XCTAssertTrue(photoButton.waitForExistence(timeout: 10), "Photo row should exist")
         photoButton.tap()
 
-        // LAB-238: the OCR is shown, under an explicit nothing-written banner.
+        // the OCR is shown, under an explicit nothing-written banner.
         let banner = app.staticTexts["OCR read — nothing is written yet"]
         XCTAssertTrue(banner.waitForExistence(timeout: 30), "OCR should be shown to the human")
 
@@ -37,7 +37,7 @@ final class CaptureUITests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
 
-        // LAB-239: continuing without a selection is refused.
+        // continuing without a selection is refused.
         let continueButton = app.buttons["Continue with Selected Span"]
         XCTAssertFalse(continueButton.isEnabled, "continue must be refused with no span")
 
@@ -55,7 +55,7 @@ final class CaptureUITests: XCTestCase {
         XCTAssertTrue(continueButton.isEnabled, "the highlighted span must unlock continue")
         continueButton.tap()
 
-        // LAB-240: the confirm gate — the agent proposes, the human confirms.
+        // the confirm gate — the agent proposes, the human confirms.
         let confirmHeader = app.staticTexts["Agent proposal — edit before saving"]
         XCTAssertTrue(confirmHeader.waitForExistence(timeout: 15), "confirm screen should appear")
         XCTAssertTrue(app.buttons["Confirm & Save"].exists, "the only write path is the confirm button")

@@ -10,3 +10,30 @@ ios/build/
 
 # Kettle desk runtime state (knowledge files stay tracked)
 .kettle/runtime/
+
+
+# Local surface — not for a public tree
+.local/
+.inbox/
+.claude/
+.cursor/
+.grok/
+.aider*
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+node_modules/
+.idea/
+*.swp
+Thumbs.db
+
+# Project records — kept outside the public tree
+HANDOFF*.md
+handoff-*.md
+_Status.md
+_Status.md.*
+THREADS.md

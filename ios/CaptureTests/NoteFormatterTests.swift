@@ -2,7 +2,7 @@ import XCTest
 
 @testable import Capture
 
-/// LAB-240: the iOS app writes the same YAML+md as the CLI. These tests
+/// the iOS app writes the same YAML+md as the CLI. These tests
 /// mirror the CLI's floor suite (`tests/test_capture_floor.py` and
 /// `tests/test_note_contract.py`) so the two surfaces cannot drift:
 /// filename contract, flow-sequence tags, scalar quoting, memo append.
