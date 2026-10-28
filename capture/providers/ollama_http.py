@@ -1,10 +1,10 @@
 """Talk to a local Ollama tag through the configured HTTP host.
 
-The `ollama` CLI follows `OLLAMA_HOST`. On the GPU host that variable points at
-the raw daemon (`127.0.0.1:11435`). The admission clerk is the tinpusher fence
-on `127.0.0.1:11434` (`gpu-admit` via `tinpusher-proxy`). These stages POST
+The `ollama` CLI follows `OLLAMA_HOST`. That variable may point at a raw
+daemon on a non-default port (for example `127.0.0.1:11435`) while an
+admission proxy listens on `127.0.0.1:11434`. These stages POST
 `/api/generate` at the configured host and never consult `OLLAMA_HOST`, so a
-title or tag cannot slip past the fence by inheriting the shell.
+title or tag cannot slip past that proxy by inheriting the shell.
 """
 
 from __future__ import annotations
