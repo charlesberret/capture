@@ -1,7 +1,7 @@
 """Ollama providers for title and tag enrichment.
 
-Requests go to the configured HTTP host (the tinpusher fence on the GPU host),
-not `ollama run`. See capture.providers.ollama_http.
+Requests go to the configured HTTP host, not `ollama run`. See
+capture.providers.ollama_http.
 """
 
 from __future__ import annotations
