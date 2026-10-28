@@ -9,19 +9,21 @@ is not present (it is not part of the public package).
 import importlib.machinery
 import importlib.util
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(
-    os.environ.get(
-        "CAPTURE_REPROCESS",
-        Path.home() / "cloud" / "sync" / "code" / "bin" / "capture-reprocess",
-    )
-)
+# The script is not part of this package. Point CAPTURE_REPROCESS at it, or
+# have `capture-reprocess` on PATH. Otherwise these tests skip.
+_found = os.environ.get("CAPTURE_REPROCESS") or shutil.which("capture-reprocess")
+SCRIPT = Path(_found) if _found else Path()
 
-pytestmark = pytest.mark.skipif(not SCRIPT.exists(), reason="capture-reprocess not present")
+pytestmark = pytest.mark.skipif(
+    not SCRIPT.is_file(),
+    reason="capture-reprocess not on PATH and CAPTURE_REPROCESS unset",
+)
 
 BODY = (
     "A longer body with enough text for the model to work from honestly. "
