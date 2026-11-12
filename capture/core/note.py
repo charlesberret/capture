@@ -74,7 +74,9 @@ def format_tags(tags: list[str]) -> str:
 def generate_title(content: str, warmup=None) -> str:
     """Generate title via configured provider, with truncate fallback."""
     from capture.core.config import content_threshold
+    from capture.core.provider_failure import begin_title_capture
 
+    begin_title_capture()
     if len(content.strip()) > content_threshold():
         provider = get_provider("title")
         title = provider.generate(content, warmup=warmup)
@@ -149,11 +151,17 @@ def create_note(content: str, title: str | None = None, warmup=None) -> Path:
     if notes_dir is None:
         raise RuntimeError("NOTES_DIR not set")
 
+    from capture.core.provider_failure import consume_title_provider_failure
+
     ts = timestamp()
+    title_fallback_line = ""
     if title:
         slug = slugify(title)
     else:
         slug = generate_title(content, warmup=warmup)
+        failure = consume_title_provider_failure()
+        if failure:
+            title_fallback_line = f"\ntitle_fallback: {yaml_scalar(failure)}"
 
     filename = f"{ts} - {slug}.md" if slug else f"{ts}.md"
     filepath = notes_dir / filename
@@ -174,7 +182,7 @@ def create_note(content: str, title: str | None = None, warmup=None) -> Path:
     note_content = f"""---
 title: {title_value}{author_line}
 date: {datetime.now().strftime("%Y-%m-%d %H:%M")}
-tags: {tags_str}
+tags: {tags_str}{title_fallback_line}
 ---
 
 {content}

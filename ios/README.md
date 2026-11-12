@@ -59,6 +59,8 @@ Without a Gemini key the app still works in degrade mode: titles fall back to fi
 
 Identical to the CLI — YAML frontmatter with `title`, `date`, `tags`, then body content. Files land directly in your chosen Notes folder.
 
+The Python writer may also set `title_fallback` when its title provider fails. The value is the provider name, a colon, and a short reason, for example `ollama_local: connection refused`. That key is Python-only; this app does not write it.
+
 ## Running the tests
 
 ```bash

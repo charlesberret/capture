@@ -9,7 +9,11 @@ title or tag cannot slip past that proxy by inheriting the shell.
 
 from __future__ import annotations
 
+import json
+import re
 import threading
+import urllib.error
+from typing import NamedTuple
 
 from capture.core.text import clean_model_output
 from capture.providers._http import post_json
@@ -19,9 +23,50 @@ from capture.providers._http import post_json
 FENCE_HOST = "http://127.0.0.1:11434"
 
 
+class OllamaCompletion(NamedTuple):
+    text: str | None
+    error: str | None
+
+
 def ollama_host(provider_cfg: dict) -> str:
     host = provider_cfg.get("host") or FENCE_HOST
     return str(host).rstrip("/")
+
+
+_HTTP_STATUS = re.compile(r"HTTP\s+(\d{3})\b")
+
+
+def _short_http_message(msg: str) -> str:
+    """Status only. A long response body must not become the error string."""
+    match = _HTTP_STATUS.search(msg)
+    if match:
+        return f"HTTP {match.group(1)}"
+    collapsed = " ".join(msg.split())
+    if collapsed and len(collapsed) <= 80:
+        return collapsed
+    return "HTTP error"
+
+
+def _short_error(exc: BaseException) -> str:
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"HTTP {exc.code}"
+    if isinstance(exc, RuntimeError):
+        msg = str(exc).strip()
+        if msg.startswith("HTTP "):
+            return _short_http_message(msg)
+        return msg[:80] if msg else "request failed"
+    if isinstance(exc, urllib.error.URLError):
+        reason = exc.reason
+        if isinstance(reason, ConnectionRefusedError):
+            return "connection refused"
+        if reason is not None:
+            return str(reason)[:80]
+        return "connection error"
+    if isinstance(exc, json.JSONDecodeError):
+        return "malformed JSON"
+    return type(exc).__name__
 
 
 class _Joinable:
@@ -38,7 +83,7 @@ class _Joinable:
         self._thread.join(timeout=timeout)
 
 
-def ollama_complete(provider_cfg: dict, prompt: str) -> str | None:
+def ollama_complete(provider_cfg: dict, prompt: str) -> OllamaCompletion:
     host = ollama_host(provider_cfg)
     model = provider_cfg.get("model", "qwen-capable")
     timeout = int(provider_cfg.get("timeout", 60))
@@ -49,12 +94,12 @@ def ollama_complete(provider_cfg: dict, prompt: str) -> str | None:
             {"Content-Type": "application/json"},
             timeout=timeout,
         )
-    except Exception:
-        return None
+    except Exception as exc:
+        return OllamaCompletion(None, _short_error(exc))
     text = response.get("response") if isinstance(response, dict) else None
     if not isinstance(text, str) or not text.strip():
-        return None
-    return clean_model_output(text)
+        return OllamaCompletion(None, "empty response")
+    return OllamaCompletion(clean_model_output(text), None)
 
 
 def ollama_warmup(provider_cfg: dict) -> _Joinable:
