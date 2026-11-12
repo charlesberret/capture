@@ -73,3 +73,30 @@ def test_legacy_llm_block_fills_ollama_model(tmp_path):
     assert loaded["providers"]["title"]["ollama_local"]["model"] == "legacy-tag"
     assert loaded["providers"]["tags"]["default"] == "disabled"
     assert loaded["providers"]["connections"]["default"] == "disabled"
+
+
+def test_provider_ollama_timeout_wins_over_builtin_llm_default(tmp_path):
+    cfg_path = tmp_path / "config.yaml"
+    _write_cfg(
+        cfg_path,
+        "providers:\n  title:\n    ollama_local:\n      timeout: 7\n",
+    )
+    loaded = load_config(cfg_path)
+    assert loaded["providers"]["title"]["ollama_local"]["timeout"] == 7
+
+
+def test_provider_whisper_model_wins_over_builtin_llm_default(tmp_path):
+    cfg_path = tmp_path / "config.yaml"
+    _write_cfg(
+        cfg_path,
+        "providers:\n  transcription:\n    whisper_local:\n      model: small\n",
+    )
+    loaded = load_config(cfg_path)
+    assert loaded["providers"]["transcription"]["whisper_local"]["model"] == "small"
+
+
+def test_legacy_llm_title_timeout_maps_to_provider(tmp_path):
+    cfg_path = tmp_path / "config.yaml"
+    _write_cfg(cfg_path, "llm:\n  title_timeout: 5\n")
+    loaded = load_config(cfg_path)
+    assert loaded["providers"]["title"]["ollama_local"]["timeout"] == 5
