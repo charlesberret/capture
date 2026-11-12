@@ -38,12 +38,15 @@ def gemini_generate(
 ) -> str | None:
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{model}:generateContent?key={api_key}"
+        f"{model}:generateContent"
     )
     response = post_json(
         url,
         {"contents": contents},
-        {"Content-Type": "application/json"},
+        {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        },
         timeout=timeout,
     )
     return extract_gemini_text(response)
