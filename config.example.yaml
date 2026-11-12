@@ -39,7 +39,7 @@ providers:
       model: qwen-capable
       # Ollama's standard local port. Point this at a proxy or another daemon if you run one.
       host: http://127.0.0.1:11434
-      timeout: 20
+      timeout: 60
     gemini_flash:
       model: gemini-2.0-flash
       api_key: env:GOOGLE_API_KEY
@@ -50,7 +50,7 @@ providers:
     ollama_local:
       model: qwen-capable
       host: http://127.0.0.1:11434
-      timeout: 15
+      timeout: 45
     gemini_flash:
       model: gemini-2.0-flash
       api_key: env:GOOGLE_API_KEY
@@ -61,7 +61,7 @@ providers:
     ollama_local:
       model: qwen-capable
       host: http://127.0.0.1:11434
-      timeout: 30
+      timeout: 90
     gemini_flash:
       model: gemini-2.0-flash
       api_key: env:GOOGLE_API_KEY
@@ -78,12 +78,12 @@ providers:
 # llm:
 #   model: qwen-capable
 #   enable_metis: true
-#   title_timeout: 20
-#   tag_timeout: 15
+#   title_timeout: 60
+#   tag_timeout: 45
 #   content_threshold: 30
 #   whisper_model: medium
 #   auto_correct: true
-#   correction_timeout: 30
+#   correction_timeout: 90
 
 # Default note metadata
 # defaults:
