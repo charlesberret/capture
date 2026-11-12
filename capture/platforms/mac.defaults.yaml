@@ -1,4 +1,4 @@
-# Platform defaults for macOS CLI (bundled reference; merged automatically)
+# Platform defaults for macOS CLI (bundled reference; parity-checked for providers.<stage>.default only)
 providers:
   transcription:
     default: whisper_local
