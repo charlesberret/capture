@@ -104,18 +104,26 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command")
 
     quick_parser = subparsers.add_parser("quick", help="One-liner capture")
-    quick_parser.add_argument("--dest", "-d", type=str, help=argparse.SUPPRESS)
+    quick_parser.add_argument(
+        "--dest", "-d", type=str, default=argparse.SUPPRESS, help=argparse.SUPPRESS
+    )
     quick_parser.add_argument("text", nargs="+", help="Text to capture")
 
     text_parser = subparsers.add_parser("text", help="Open editor for text capture")
-    text_parser.add_argument("--dest", "-d", type=str, help=argparse.SUPPRESS)
+    text_parser.add_argument(
+        "--dest", "-d", type=str, default=argparse.SUPPRESS, help=argparse.SUPPRESS
+    )
 
     photo_parser = subparsers.add_parser("photo", help="OCR from image")
-    photo_parser.add_argument("--dest", "-d", type=str, help=argparse.SUPPRESS)
+    photo_parser.add_argument(
+        "--dest", "-d", type=str, default=argparse.SUPPRESS, help=argparse.SUPPRESS
+    )
     photo_parser.add_argument("file", nargs="?", help="Image file path")
 
     voice_parser = subparsers.add_parser("voice", help="Record and transcribe voice")
-    voice_parser.add_argument("--dest", "-d", type=str, help=argparse.SUPPRESS)
+    voice_parser.add_argument(
+        "--dest", "-d", type=str, default=argparse.SUPPRESS, help=argparse.SUPPRESS
+    )
     voice_parser.add_argument(
         "--multi", "-m", action="store_true", help="Record multiple notes with pipelined transcription"
     )
@@ -129,7 +137,9 @@ def main() -> None:
     fragments_parser = subparsers.add_parser(
         "fragments", help="Find notes too short to be useful and file them on the Kettle desk"
     )
-    fragments_parser.add_argument("--dest", "-d", type=str, help=argparse.SUPPRESS)
+    fragments_parser.add_argument(
+        "--dest", "-d", type=str, default=argparse.SUPPRESS, help=argparse.SUPPRESS
+    )
     fragments_parser.add_argument(
         "--threshold", type=int, default=None, metavar="CHARS",
         help=f"Body length below which a note counts as a fragment "
@@ -141,7 +151,9 @@ def main() -> None:
     )
 
     process_parser = subparsers.add_parser("process", help="Process staging folder")
-    process_parser.add_argument("--dest", "-d", type=str, help=argparse.SUPPRESS)
+    process_parser.add_argument(
+        "--dest", "-d", type=str, default=argparse.SUPPRESS, help=argparse.SUPPRESS
+    )
     process_parser.add_argument(
         "--topic", "-t", type=str, default="general", help="Topic for vocabulary hints (default: general)"
     )
@@ -180,8 +192,6 @@ def main() -> None:
         state.NOTES_DIR = choose_destination()
 
     state.NOTES_DIR.mkdir(parents=True, exist_ok=True)
-    capture_dir = Path(cfg()["capture_dir"]).expanduser()
-    capture_dir.mkdir(parents=True, exist_ok=True)
 
     if state.NOTES_DIR != default_notes_dir:
         save_recent_destination(state.NOTES_DIR)
@@ -202,6 +212,8 @@ def main() -> None:
     elif args.command == "fragments":
         run_fragments(threshold=args.threshold, write=args.write)
     elif args.command == "process":
+        capture_dir = Path(cfg()["capture_dir"]).expanduser()
+        capture_dir.mkdir(parents=True, exist_ok=True)
         topic = getattr(args, "topic", "general")
         correct = not getattr(args, "no_correct", False)
         process_capture_folder(topic=topic, correct=correct)
