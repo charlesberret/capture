@@ -1,7 +1,5 @@
 # Capture test-gap analysis
 
-Sprint work item: enumerate module coverage, name the riskiest untested behaviours, and add offline tests for the worst gaps. No production behaviour changes.
-
 ## How coverage was measured
 
 Command (from the repository root, with PyYAML and pytest-cov installed in a local venv):

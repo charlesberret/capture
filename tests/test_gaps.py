@@ -53,25 +53,23 @@ def test_create_note_raises_when_notes_dir_unset(offline, monkeypatch):
         create_note("orphan thought")
 
 
-def test_model_tag_for_note_from_ollama_title_default(tmp_path):
+def test_model_tag_for_note_from_ollama_title_default(offline):
     from capture.core.config import load_config
 
-    cfg = load_config(tmp_path / "missing.yaml")
-    cfg["notes_dir"] = str(tmp_path)
+    cfg = load_config(offline / "missing.yaml")
+    cfg["notes_dir"] = str(offline)
     cfg["providers"]["title"]["default"] = "ollama_local"
     cfg["providers"]["title"]["ollama_local"]["model"] = "qwen-capable:latest"
     set_config(cfg)
     assert _model_tag_for_note() == "llm/qwen-capable"
 
 
-def test_surface_serendipity_surfaces_an_old_note(tmp_path, monkeypatch):
+def test_surface_serendipity_surfaces_an_old_note(offline, monkeypatch):
     import capture.core.note as note_mod
 
-    set_config(disabled_config(tmp_path))
-    state.NOTES_DIR = tmp_path
     monkeypatch.setattr(note_mod, "metis_enabled", lambda: True)
 
-    ancient = tmp_path / "20200101 - Ancient wisdom.md"
+    ancient = offline / "20200101 - Ancient wisdom.md"
     ancient.write_text(
         "---\ntitle: Ancient wisdom\ndate: 2020-01-01\ntags: [kernel]\n---\n\nA line of old insight.\n"
     )
