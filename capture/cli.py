@@ -18,6 +18,7 @@ from capture.core.pipeline import (
     capture_voice_multi,
     process_capture_folder,
 )
+from capture import __version__
 from capture.core.ui import choose_destination, save_recent_destination, shorten_path
 
 
@@ -94,6 +95,11 @@ def run_fragments(threshold: int | None = None, write: bool = False) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Quick idea capture tool")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"capture {__version__}",
+    )
     parser.add_argument("--dest", "-d", type=str, help="Destination directory (default: Notes/)")
     parser.add_argument("--config", type=str, metavar="PATH", help="Path to config file")
     parser.add_argument(
