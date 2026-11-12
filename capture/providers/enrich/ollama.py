@@ -7,6 +7,7 @@ capture.providers.ollama_http.
 from __future__ import annotations
 
 from capture.core.prompts_loader import format_prompt
+from capture.core.provider_failure import report_title_provider_failure
 from capture.providers.ollama_http import ollama_complete, ollama_warmup
 
 
@@ -29,7 +30,11 @@ class OllamaTitleProvider:
     def generate(self, content: str, warmup=None) -> str | None:
         _wait_warmup(warmup)
         prompt = format_prompt("title", content=content[:1000])
-        raw = ollama_complete(self.cfg, prompt)
+        completion = ollama_complete(self.cfg, prompt)
+        if completion.error:
+            report_title_provider_failure("ollama_local", completion.error)
+            return None
+        raw = completion.text
         if not raw:
             return None
         title = raw.strip("\"'")
@@ -45,7 +50,8 @@ class OllamaTagsProvider:
     def suggest(self, content: str, warmup=None) -> list[str]:
         _wait_warmup(warmup)
         prompt = format_prompt("tags", content=content[:500])
-        raw = ollama_complete(self.cfg, prompt)
+        completion = ollama_complete(self.cfg, prompt)
+        raw = completion.text
         if not raw:
             return []
         tags = [t.strip().strip("\"'") for t in raw.split(",")]
