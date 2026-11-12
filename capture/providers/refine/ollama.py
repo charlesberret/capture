@@ -22,7 +22,8 @@ class OllamaCorrectionProvider:
             source=source,
             text=text,
         )
-        corrected = ollama_complete(self.cfg, prompt)
+        completion = ollama_complete(self.cfg, prompt)
+        corrected = completion.text
         if corrected and 0.5 < len(corrected) / max(len(text), 1) < 2.0:
             return corrected
         return text

@@ -156,6 +156,8 @@ tags: [kernel, captured, llm/qwen-capable, cypherpunks, tools]
 
 Tags are a YAML flow sequence, not `[[wikilinks]]`. `kernel` and `captured` are the default base tags and can be changed under `defaults.tags`. Capture deliberately does not stamp the `kind`, `subject`, `status`, or `source` contract. A separate classification pass, if you run one, owns those fields.
 
+When the title provider fails, the Python writer still names the note from the first line of the body and adds one optional key, `title_fallback`. The value is the provider name, a colon, and a short reason, for example `ollama_local: connection refused`. A long HTTP body is not stored. The iOS app does not write `title_fallback`; the key is Python-only.
+
 ### Smart titles
 Uses Ollama to generate concise 3-8 word titles. Falls back to first-line truncation for short content or when Ollama is unavailable.
 

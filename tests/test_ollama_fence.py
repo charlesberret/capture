@@ -47,8 +47,9 @@ def test_complete_posts_generate_to_the_fence(monkeypatch):
         return {"response": "A fenced title"}
 
     monkeypatch.setattr("capture.providers.ollama_http.post_json", fake_post)
-    text = ollama_complete({"model": "ornith:9b", "timeout": 12}, "prompt")
-    assert text == "A fenced title"
+    completion = ollama_complete({"model": "ornith:9b", "timeout": 12}, "prompt")
+    assert completion.text == "A fenced title"
+    assert completion.error is None
     assert seen["url"] == "http://127.0.0.1:11434/api/generate"
     assert seen["payload"]["model"] == "ornith:9b"
     assert seen["payload"]["stream"] is False
