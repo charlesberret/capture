@@ -1,4 +1,4 @@
-# Platform defaults for macOS CLI (bundled reference; parity-checked against MAC_PROVIDER_DEFAULTS in config.py)
+# Platform defaults for macOS CLI (bundled reference; parity-checked for providers.<stage>.default only)
 providers:
   transcription:
     default: whisper_local

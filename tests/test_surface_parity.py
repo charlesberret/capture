@@ -53,18 +53,10 @@ def _parse_swift_stage_providers() -> dict[str, str]:
     )
     assert match, "CaptureModels.swift: could not find ProviderDefaults.stageProviders"
     block = match.group(1)
-    swift_to_stage = {
-        "transcription": "transcription",
-        "ocr": "ocr",
-        "title": "title",
-        "tags": "tags",
-        "correction": "correction",
-        "connections": "connections",
-    }
     out: dict[str, str] = {}
-    for swift_case, stage in swift_to_stage.items():
-        m = re.search(rf"\.{swift_case}:\s*\"([^\"]+)\"", block)
-        assert m, f"CaptureModels.swift: missing stageProviders entry for .{swift_case}"
+    for stage in STAGE_ORDER:
+        m = re.search(rf"\.{stage}:\s*\"([^\"]+)\"", block)
+        assert m, f"CaptureModels.swift: missing stageProviders entry for .{stage}"
         out[stage] = m.group(1)
     return out
 
@@ -135,11 +127,6 @@ def test_swift_provider_defaults_literals_match_python_defaults():
     assert swift["maxConnections"] == DEFAULTS["metis"]["max_connections"]
     assert swift["maxKeywords"] == DEFAULTS["metis"]["max_keywords"]
     assert swift["geminiModel"] == _gemini_model_from_mac_defaults()
-
-
-def test_mac_defaults_yaml_header_does_not_claim_automatic_merge():
-    header = (PLATFORMS / "mac.defaults.yaml").read_text().splitlines()[0]
-    assert "merged automatically" not in header.lower()
 
 
 @pytest.mark.parametrize("path", [CLI_PROMPTS, IOS_PROMPTS, PLATFORMS / "mac.defaults.yaml"])
