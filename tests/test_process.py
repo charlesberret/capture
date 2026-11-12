@@ -179,3 +179,17 @@ def test_process_leaves_voice_file_when_transcribe_raises(tmp_path, monkeypatch)
 
     assert (staging / "clip.wav").exists()
     assert list(notes.glob("*.md")) == []
+
+
+def test_notify_done_is_silent_without_a_terminal(monkeypatch):
+    """A piped run (tests, evals, agents) never reaches osascript."""
+    import capture.core.pipeline as pipeline
+
+    calls = []
+    monkeypatch.setattr(pipeline.subprocess, "run", lambda args, *a, **kw: calls.append(args))
+    monkeypatch.setattr(pipeline.sys.stdout, "isatty", lambda: False, raising=False)
+    pipeline.notify_done(3)
+    assert calls == []
+    monkeypatch.setattr(pipeline.sys.stdout, "isatty", lambda: True, raising=False)
+    pipeline.notify_done(3)
+    assert calls and calls[0][0] == "osascript"

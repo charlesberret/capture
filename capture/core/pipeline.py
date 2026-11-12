@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -371,16 +372,27 @@ def process_capture_folder(topic: str = "general", correct: bool = True) -> None
                 print(f"  {emoji} {typ.title()}: {count}")
     print(f"{'='*40}")
 
-    if created > 0:
-        try:
-            subprocess.run(
-                [
-                    "osascript",
-                    "-e",
-                    f'display notification "Created {created} note{"s" if created != 1 else ""}" '
-                    f'with title "Capture" sound name "Glass"',
-                ],
-                capture_output=True,
-            )
-        except Exception:
-            pass
+    notify_done(created)
+
+
+def notify_done(created: int) -> None:
+    """Post a macOS notification, but only for a person at a terminal.
+
+    Tests, eval harnesses and agents run `process` with stdout piped; a desktop
+    notification from them reads as a phantom capture (2026-11-11: an eval's
+    frozen copy of this repo posted one per test run).
+    """
+    if created <= 0 or not sys.stdout.isatty():
+        return
+    try:
+        subprocess.run(
+            [
+                "osascript",
+                "-e",
+                f'display notification "Created {created} note{"s" if created != 1 else ""}" '
+                f'with title "Capture" sound name "Glass"',
+            ],
+            capture_output=True,
+        )
+    except Exception:
+        pass
