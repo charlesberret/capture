@@ -149,8 +149,8 @@ DEFAULT_CONFIG_TEMPLATE = """\
 # llm:
 #   model: qwen-capable
 #   enable_metis: true
-#   title_timeout: 20
-#   tag_timeout: 15
+#   title_timeout: 60
+#   tag_timeout: 45
 #   content_threshold: 30
 #   whisper_model: medium
 #   auto_correct: true
@@ -211,32 +211,35 @@ def resolve_secret(value: str | None) -> str | None:
     return value
 
 
-def _apply_legacy_llm(config: dict) -> dict:
+def _apply_legacy_llm(config: dict, file_config: dict | None = None) -> dict:
     """Map legacy llm: settings into provider entries when not explicitly set."""
     llm = config.get("llm", {})
+    file_config = file_config or {}
+    file_llm = file_config.get("llm") or {}
+    file_providers = file_config.get("providers") or {}
     providers = config.setdefault("providers", _deep_copy_dict(MAC_PROVIDER_DEFAULTS))
 
     model = llm.get("model", "qwen-capable")
     for stage in ("title", "tags", "correction"):
         stage_cfg = providers.setdefault(stage, {})
         ollama = stage_cfg.setdefault("ollama_local", {})
+        file_ollama = (file_providers.get(stage) or {}).get("ollama_local") or {}
         if "model" not in ollama or ollama.get("model") == MAC_PROVIDER_DEFAULTS[stage]["ollama_local"]["model"]:
             ollama["model"] = model
-        timeout_key = "timeout"
-        llm_timeout = llm.get(f"{stage.replace('correction', 'correction')}_timeout")
         if stage == "title":
-            llm_timeout = llm.get("title_timeout", 60)
+            llm_timeout_key = "title_timeout"
         elif stage == "tags":
-            llm_timeout = llm.get("tag_timeout", 45)
-        elif stage == "correction":
-            llm_timeout = llm.get("correction_timeout", 90)
-        if llm_timeout is not None:
-            ollama["timeout"] = llm_timeout
+            llm_timeout_key = "tag_timeout"
+        else:
+            llm_timeout_key = "correction_timeout"
+        if "timeout" not in file_ollama and llm_timeout_key in file_llm:
+            ollama["timeout"] = file_llm[llm_timeout_key]
 
     whisper = providers.setdefault("transcription", {}).setdefault("whisper_local", {})
-    if llm.get("whisper_model"):
+    file_whisper = (file_providers.get("transcription") or {}).get("whisper_local") or {}
+    if "model" not in file_whisper and "whisper_model" in file_llm:
         whisper["model"] = llm["whisper_model"]
-    if llm.get("whisper_backend"):
+    if "backend" not in file_whisper and "whisper_backend" in file_llm:
         whisper["backend"] = llm["whisper_backend"]
 
     if not llm.get("enable_metis", True):
@@ -254,6 +257,7 @@ def load_config(config_path: str | Path | None = None) -> dict:
     config = _deep_copy_dict(DEFAULTS)
 
     file_path = Path(config_path).expanduser() if config_path else _find_config_file()
+    file_config: dict = {}
     if file_path and file_path.exists():
         try:
             import yaml
@@ -272,7 +276,7 @@ def load_config(config_path: str | Path | None = None) -> dict:
             _deep_copy_dict(MAC_PROVIDER_DEFAULTS), config["providers"]
         )
 
-    config = _apply_legacy_llm(config)
+    config = _apply_legacy_llm(config, file_config)
 
     if os.environ.get("OLLAMA_MODEL"):
         model = os.environ["OLLAMA_MODEL"]

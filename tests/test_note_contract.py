@@ -130,7 +130,8 @@ def test_clean_model_output_strips_spinner_noise():
 
 
 def test_frontmatter_survives_a_tag_full_of_escapes():
-    line = f"tags: {format_tags(['kernel', 'publication mo\x1b[2D\x1b[K', 'ok'])}"
+    noisy = "publication mo\x1b[2D\x1b[K"
+    line = f"tags: {format_tags(['kernel', noisy, 'ok'])}"
     assert yaml.safe_load(line)["tags"] == ["kernel", "publication mo", "ok"]
 
 
