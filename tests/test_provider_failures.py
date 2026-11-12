@@ -10,8 +10,10 @@ import yaml
 
 from capture.core import state
 from capture.core.config import set_config
-from capture.core.note import create_note, generate_title
+from capture.core.note import create_note
 from capture.core.provider_failure import begin_title_capture, consume_title_provider_failure
+from capture.providers.ollama_http import _short_error
+from capture.providers.registry import get_provider
 
 
 def ollama_title_config(notes_dir):
@@ -138,9 +140,47 @@ def test_failure_reported_once_per_capture(monkeypatch, ollama_title_notes, caps
 
     monkeypatch.setattr("capture.providers.ollama_http.post_json", refuse)
     begin_title_capture()
-    slug = generate_title(CONTENT)
-    consume_title_provider_failure()
+    provider = get_provider("title")
+    # Two attempts inside one capture: the second must not print again.
+    first = provider.generate(CONTENT)
+    second = provider.generate(CONTENT)
+    failure = consume_title_provider_failure()
     err = _stderr(capsys)
-    assert slug == truncate_title(CONTENT)
+    assert first is None
+    assert second is None
+    assert failure == "ollama_local: connection refused"
+    assert err.strip() == "capture: title provider ollama_local: connection refused"
     assert err.count("capture: title provider") == 1
-    assert calls["n"] == 1
+    assert calls["n"] == 2
+
+
+def test_long_http_message_stays_short(monkeypatch, ollama_title_notes, capsys):
+    body = "model is missing " + ("x" * 500)
+    message = f"HTTP 503: {body}"
+    assert len(message) > 80
+    short = _short_error(RuntimeError(message))
+    assert short
+    assert short != message
+    assert body not in short
+    assert message not in short
+    assert len(short) <= 80
+    assert short == "HTTP 503"
+
+    bare = "HTTP " + ("y" * 400)
+    bare_short = _short_error(RuntimeError(bare))
+    assert bare_short
+    assert bare_short != bare
+    assert "y" * 40 not in bare_short
+    assert len(bare_short) <= 80
+
+    def http_error(*_args, **_kwargs):
+        raise RuntimeError(message)
+
+    monkeypatch.setattr("capture.providers.ollama_http.post_json", http_error)
+    path = create_note(CONTENT)
+    fm = yaml.safe_load(path.read_text().split("---", 2)[1])
+    assert fm["title_fallback"] == "ollama_local: HTTP 503"
+    assert body not in path.read_text()
+    err = _stderr(capsys)
+    assert "HTTP 503" in err
+    assert body not in err

@@ -10,6 +10,7 @@ title or tag cannot slip past that proxy by inheriting the shell.
 from __future__ import annotations
 
 import json
+import re
 import threading
 import urllib.error
 from typing import NamedTuple
@@ -32,6 +33,20 @@ def ollama_host(provider_cfg: dict) -> str:
     return str(host).rstrip("/")
 
 
+_HTTP_STATUS = re.compile(r"HTTP\s+(\d{3})\b")
+
+
+def _short_http_message(msg: str) -> str:
+    """Status only. A long response body must not become the error string."""
+    match = _HTTP_STATUS.search(msg)
+    if match:
+        return f"HTTP {match.group(1)}"
+    collapsed = " ".join(msg.split())
+    if collapsed and len(collapsed) <= 80:
+        return collapsed
+    return "HTTP error"
+
+
 def _short_error(exc: BaseException) -> str:
     if isinstance(exc, TimeoutError):
         return "timeout"
@@ -40,7 +55,7 @@ def _short_error(exc: BaseException) -> str:
     if isinstance(exc, RuntimeError):
         msg = str(exc).strip()
         if msg.startswith("HTTP "):
-            return msg.split(":", 1)[0] if len(msg) <= 80 else msg[:77] + "..."
+            return _short_http_message(msg)
         return msg[:80] if msg else "request failed"
     if isinstance(exc, urllib.error.URLError):
         reason = exc.reason
