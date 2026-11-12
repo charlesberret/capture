@@ -149,8 +149,8 @@ DEFAULT_CONFIG_TEMPLATE = """\
 # llm:
 #   model: qwen-capable
 #   enable_metis: true
-#   title_timeout: 20
-#   tag_timeout: 15
+#   title_timeout: 60
+#   tag_timeout: 45
 #   content_threshold: 30
 #   whisper_model: medium
 #   auto_correct: true
