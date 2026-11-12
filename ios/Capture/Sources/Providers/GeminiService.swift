@@ -39,10 +39,11 @@ struct GeminiService {
     private func generate(contents: [[String: Any]]) async throws -> String {
         guard !apiKey.isEmpty else { throw CaptureError.apiKeyMissing }
 
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)")!
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["contents": contents])
 
         let (data, response) = try await URLSession.shared.data(for: request)
